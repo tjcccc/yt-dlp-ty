@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/* Geometry scale — see spec/ui.md. Kept consistent so nested shapes read as
+   concentric rather than ad hoc per component. Use only rounded-sm/md/lg;
+   Tailwind's stock rounded-xl/2xl sit outside this scale. */
+@theme {
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+}
+
+/* Semantic color tokens. Components reference these rather than literal
+   utilities (bg-white, text-black/50) so both appearances are defined in one
+   place — macOS switches appearance system-wide and a light-locked app reads
+   as foreign. Every token is defined for light here and redefined wholesale
+   under prefers-color-scheme: dark below; none is left to inherit. */
+:root {
+  color-scheme: light dark;
+
+  /* Opaque content surfaces (content layer — never glass). */
+  --surface: #ffffff;
+  --surface-sunken: #f1f1f4;
+  --surface-fallback: #f5f5f7; /* window bg where vibrancy is unavailable */
+
+  /* Translucent fills. --glass-nav is the sidebar (navigation layer),
+     --glass-overlay the modal sheet (overlay layer). Alpha is low enough to
+     let the OS vibrancy material read through, and the text on top is always
+     a solid token so contrast never depends on what's behind the window. */
+  --glass-nav: rgb(255 255 255 / 0.5);
+  --glass-overlay: rgb(255 255 255 / 0.85);
+  --scrim: rgb(0 0 0 / 0.22);
+
+  --text-primary: #1d1d1f;
+  --text-secondary: rgb(0 0 0 / 0.55);
+  --text-tertiary: rgb(0 0 0 / 0.38);
+  --text-on-accent: #ffffff;
+
+  --border: rgb(0 0 0 / 0.1);
+  --border-strong: rgb(0 0 0 / 0.18);
+  --hover: rgb(0 0 0 / 0.045);
+  --selected: rgb(0 0 0 / 0.06);
+
+  /* Tint is semantic only: primary action + selected state (spec/ui.md).
+     Two separate tokens because one green cannot do both jobs legibly:
+     --accent is a *fill* that carries --text-on-accent, so it must be dark
+     enough for white to clear 4.5:1 (the mockup's pale green managed ~2.6:1);
+     --accent-fg is accent-coloured *text* on an ordinary surface. */
+  --accent: #1d7a51; /* white on this: 5.3:1 */
+  --accent-hover: #196845;
+  --accent-fg: #1d7a51; /* on --surface: 5.3:1 */
+
+  /* Status. Restrained, not alarm-red — and never the only signal. */
+  --danger: #b3261e;
+  --danger-bg: rgb(179 38 30 / 0.08);
+  --danger-bg-hover: rgb(179 38 30 / 0.14);
+  --progress-fill: rgb(48 164 108 / 0.18);
+  --progress-fill-strong: rgb(48 164 108 / 0.28);
+  --progress-fill-neutral: rgb(0 0 0 / 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1e1e20;
+    --surface-sunken: #252528;
+    --surface-fallback: #1a1a1c;
+
+    --glass-nav: rgb(40 40 44 / 0.5);
+    --glass-overlay: rgb(34 34 37 / 0.85);
+    --scrim: rgb(0 0 0 / 0.4);
+
+    --text-primary: #f2f2f5;
+    --text-secondary: rgb(255 255 255 / 0.6);
+    --text-tertiary: rgb(255 255 255 / 0.4);
+    /* Dark mode inverts the accent relationship: a fill dark enough for white
+       text would barely separate from a dark surface, so the fill goes light
+       and the text on it goes near-black (7.7:1). */
+    --text-on-accent: #0d2419;
+
+    --border: rgb(255 255 255 / 0.12);
+    --border-strong: rgb(255 255 255 / 0.2);
+    --hover: rgb(255 255 255 / 0.06);
+    --selected: rgb(255 255 255 / 0.09);
+
+    --accent: #4ec98a; /* --text-on-accent on this: 7.7:1 */
+    --accent-hover: #63d79a;
+    --accent-fg: #5fd39a; /* on --surface: 8.2:1 */
+
+    --danger: #ff8a80;
+    --danger-bg: rgb(255 138 128 / 0.12);
+    --danger-bg-hover: rgb(255 138 128 / 0.2);
+    --progress-fill: rgb(60 177 121 / 0.22);
+    --progress-fill-strong: rgb(60 177 121 / 0.34);
+    --progress-fill-neutral: rgb(255 255 255 / 0.08);
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* Solid by default. Window vibrancy is a macOS-only compositor effect, so
+     every other platform needs a real background here or the translucent
+     fills composite onto nothing. */
+  background-color: var(--surface-fallback);
+  color: var(--text-primary);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    system-ui,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Set by main.tsx only where the OS actually provides a vibrancy material.
+   Clearing the background is what lets it through: Tailwind preflight's
+   opaque body background would otherwise paint straight over it — the exact
+   pitfall called out in the Milestone 4 plan. */
+html.has-window-vibrancy,
+html.has-window-vibrancy body,
+html.has-window-vibrancy #root {
+  background-color: transparent;
+}
