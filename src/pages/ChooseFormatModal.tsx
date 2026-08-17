@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CommandDetails } from "../components/CommandDetails";
 import { FormatTable } from "../components/FormatTable";
 import { isVideoOnly, type ChosenFormat, type FormatEntry, type VideoFormats } from "../types";
 
@@ -59,15 +60,18 @@ export function ChooseFormatModal({
                 return (
                   <button
                     key={v.url}
-                    onClick={() => !v.error && setActiveUrl(v.url)}
-                    disabled={!!v.error}
+                    // Failed rows stay selectable on purpose: selecting one is
+                    // how its command and error output get shown below. They
+                    // still can't have a format chosen — `selectable`, which
+                    // gates the Download button, already excludes them.
+                    onClick={() => setActiveUrl(v.url)}
                     className={`w-full flex items-center justify-between gap-4 px-3 py-2 text-left ${
                       // Compare against `active`, not `activeUrl` — while the
                       // latter is still null the fallback below shows the
                       // first video's table, and highlighting nothing would
                       // leave the list disagreeing with what's displayed.
                       v.url === active?.url ? "bg-[var(--selected)]" : "hover:bg-[var(--hover)]"
-                    } ${v.error ? "cursor-not-allowed" : ""}`}
+                    }`}
                   >
                     <span className={`text-[13px] truncate ${v.error ? "text-[var(--text-tertiary)]" : ""}`}>
                       {v.title}
@@ -90,19 +94,31 @@ export function ChooseFormatModal({
             {failed.length > 0 && (
               <p className="text-[12px] text-[var(--danger)] -mt-1">
                 {failed.length} URL{failed.length > 1 ? "s" : ""} could not be read and will be
-                skipped: {failed[0].error}
+                skipped — select one to see why.
               </p>
             )}
 
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {active && !active.error ? (
-                <FormatTable
-                  formats={active.formats}
-                  selectedFormatId={chosen[active.url]?.formatId ?? null}
-                  onSelect={(format) => pick(active.url, format)}
-                />
-              ) : (
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+              {!active ? (
                 <p className="text-[13px] text-[var(--text-tertiary)]">No video selected.</p>
+              ) : (
+                <>
+                  {active.error ? (
+                    <p className="text-[13px] text-[var(--danger)]">
+                      Could not read this URL.
+                    </p>
+                  ) : (
+                    <FormatTable
+                      formats={active.formats}
+                      selectedFormatId={chosen[active.url]?.formatId ?? null}
+                      onSelect={(format) => pick(active.url, format)}
+                    />
+                  )}
+                  {/* Always available, not just on failure: seeing the exact
+                      invocation is how you confirm the cookie/proxy flags
+                      really reached the probe that produced this list. */}
+                  <CommandDetails command={active.command} log={active.error} />
+                </>
               )}
             </div>
 

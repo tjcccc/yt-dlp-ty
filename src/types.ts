@@ -62,6 +62,8 @@ export interface VideoFormats {
   /// Per-URL rather than a batch failure: one dead link shouldn't block
   /// choosing formats for the others.
   error: string | null;
+  /// The exact shell-quoted yt-dlp invocation used for this probe.
+  command: string;
 }
 
 /// True when a format carries video but no audio, so it needs pairing.
@@ -82,6 +84,8 @@ export interface JobProgressEvent {
   etaSeconds: number | null;
   overallPercent: number | null;
   errorMessage: string | null;
+  /// Sent once on the spawn event, null on subsequent ticks.
+  command: string | null;
 }
 
 export interface BinaryCheck {

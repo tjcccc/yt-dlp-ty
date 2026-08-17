@@ -1,5 +1,6 @@
 import type { JobState } from "../state/jobsSlice";
 import { cancelJob } from "../lib/tauri";
+import { CommandDetails } from "./CommandDetails";
 
 function formatBytes(bytes: number | null): string {
   if (bytes == null) return "";
@@ -59,10 +60,13 @@ export function DownloadRow({ job }: { job: JobState }) {
           </div>
         </div>
       </div>
-      {job.phase === "error" && job.errorMessage && (
-        <pre className="text-[11px] text-[var(--danger)] bg-[var(--danger-bg)] px-3 py-2 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
-          {job.errorMessage}
-        </pre>
+      {(job.command || job.errorMessage) && (
+        <div className="px-3 pb-2">
+          <CommandDetails
+            command={job.command}
+            log={job.phase === "error" ? job.errorMessage : null}
+          />
+        </div>
       )}
     </div>
   );

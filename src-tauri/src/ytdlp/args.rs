@@ -103,6 +103,15 @@ pub fn build_probe_args(parameters: &[String], proxy: Option<&str>, url: &str) -
     let mut args = strip_format_flag(parameters);
     args.push("-j".to_string());
     args.push("--no-color".to_string());
+    // `-j` doesn't just dump metadata — it resolves the format selector too,
+    // and aborts with "Requested format is not available" when the default
+    // selector matches nothing. That happens on real sites (PornHub lists
+    // formats whose codecs it doesn't report, which the default `bv*+ba/b`
+    // won't match), so a probe would fail on exactly the videos the picker
+    // exists to help with. This makes the probe report what's available
+    // instead of pre-judging it — selection is the user's job here, and an
+    // actually-unavailable video still comes back with an empty format list.
+    args.push("--ignore-no-formats-error".to_string());
     if let Some(proxy) = proxy.filter(|p| !p.trim().is_empty()) {
         args.push("--proxy".to_string());
         args.push(proxy.to_string());
@@ -260,6 +269,7 @@ mod tests {
                 "chrome",
                 "-j",
                 "--no-color",
+                "--ignore-no-formats-error",
                 "--proxy",
                 "http://127.0.0.1:7890",
                 "URL"
@@ -269,9 +279,40 @@ mod tests {
     }
 
     #[test]
+    fn probe_never_lets_format_selection_fail_the_listing() {
+        // `-j` resolves the format selector as well as dumping metadata, so
+        // without this flag a probe aborts with "Requested format is not
+        // available" on any site whose formats the default selector can't
+        // match — i.e. it fails on exactly the videos the picker is for.
+        let args = build_probe_args(&[], None, "URL");
+        assert!(args.iter().any(|a| a == "--ignore-no-formats-error"));
+    }
+
+    #[test]
     fn probe_args_omit_proxy_when_unset() {
         let args = build_probe_args(&[], Some("   "), "URL");
         assert!(!args.iter().any(|a| a == "--proxy"), "blank proxy should not be passed");
+    }
+
+    #[test]
+    fn parameters_may_be_written_one_flag_per_line() {
+        // The Parameters field is a textarea and users write flags on
+        // separate lines. `shell_words` already treats a newline as a
+        // separator; this pins that down so nobody "simplifies" the parser
+        // into a space-split later, which would fuse `chrome--write-sub`
+        // style tokens together and silently corrupt the command.
+        assert_eq!(
+            applied("--no-playlist\n--cookies-from-browser chrome\n\n  --write-sub  \n", "raw"),
+            ["--no-playlist", "--cookies-from-browser", "chrome", "--write-sub"]
+        );
+    }
+
+    #[test]
+    fn a_quoted_value_survives_a_following_line_break() {
+        assert_eq!(
+            applied("--user-agent \"Mozilla 5.0\"\n-v", "raw"),
+            ["--user-agent", "Mozilla 5.0", "-v"]
+        );
     }
 
     #[test]

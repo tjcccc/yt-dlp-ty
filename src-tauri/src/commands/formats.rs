@@ -43,18 +43,35 @@ pub struct VideoFormats {
     pub video_id: String,
     pub formats: Vec<FormatEntry>,
     pub error: Option<String>,
+    /// The exact command that was run, shell-quoted so it can be pasted into
+    /// a terminal unchanged. Without this the app is a black box when a probe
+    /// misbehaves — you can't tell which binary ran, whether the proxy or
+    /// cookie flags were applied, or reproduce it outside the app.
+    pub command: String,
 }
 
+/// Keeps a useful amount of failure output without letting a pathological run
+/// stream unbounded text into the UI.
+const STDERR_TAIL_LINES: usize = 25;
+
 impl VideoFormats {
-    fn failed(url: &str, error: String) -> Self {
+    fn failed(url: &str, command: String, error: String) -> Self {
         Self {
             url: url.to_string(),
             title: url.to_string(),
             video_id: String::new(),
             formats: Vec::new(),
             error: Some(error),
+            command,
         }
     }
+}
+
+/// Renders an invocation the way a shell would accept it back.
+fn quote_command(program: &Path, args: &[String]) -> String {
+    let mut parts = vec![program.to_string_lossy().to_string()];
+    parts.extend(args.iter().cloned());
+    shell_words::join(&parts)
 }
 
 fn as_f64(value: &Value, key: &str) -> Option<f64> {
@@ -85,15 +102,22 @@ fn parse_format(format: &Value) -> Option<FormatEntry> {
     let format_id = format.get("format_id").and_then(Value::as_str)?.to_string();
 
     // Skip storyboards/thumbnail sheets: yt-dlp lists them in `-F`, but they
-    // carry neither a video nor an audio stream, so picking one downloads a
-    // grid of preview images instead of the video. Note this tests for the
-    // literal "none" — an extractor that reports "unknown" codecs is a real
-    // stream with missing metadata and must stay selectable.
-    let vcodec = as_string(format, "vcodec", "none");
-    let acodec = as_string(format, "acodec", "none");
-    if vcodec == "none" && acodec == "none" {
+    // are grids of preview images, so picking one downloads no video at all.
+    //
+    // Identify them by their mhtml container, NOT by "both codecs are none".
+    // That earlier test looked equivalent but silently dropped real formats:
+    // plenty of extractors report no codec metadata for direct progressive
+    // downloads (PornHub's `240p`/`1080p`/`2160p` entries have null vcodec
+    // *and* null acodec), and those are often the best thing to pick. The
+    // picker was hiding half the list on such sites.
+    let is_storyboard = as_string(format, "ext", "") == "mhtml"
+        || as_string(format, "protocol", "") == "mhtml";
+    if is_storyboard {
         return None;
     }
+
+    let vcodec = as_string(format, "vcodec", "none");
+    let acodec = as_string(format, "acodec", "none");
 
     Some(FormatEntry {
         format_id,
@@ -115,23 +139,27 @@ fn parse_format(format: &Value) -> Option<FormatEntry> {
 
 fn probe_one(ytdlp: &Path, parameters: &[String], proxy: &str, url: &str) -> VideoFormats {
     let args = build_probe_args(parameters, Some(proxy), url);
+    let command = quote_command(ytdlp, &args);
 
     let output = match Command::new(ytdlp).args(&args).output() {
         Ok(output) => output,
-        Err(e) => return VideoFormats::failed(url, format!("failed to run yt-dlp: {e}")),
+        Err(e) => return VideoFormats::failed(url, command, format!("failed to run yt-dlp: {e}")),
     };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // Only the tail is useful — yt-dlp's stderr leads with extractor
-        // chatter and warnings before the actual failure.
-        let message = stderr
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .last()
-            .unwrap_or("yt-dlp exited with an error")
-            .to_string();
-        return VideoFormats::failed(url, message);
+        // Keep a tail rather than only the final line: yt-dlp's actual cause
+        // is routinely a WARNING several lines above the terminating ERROR
+        // (an unavailable extractor, a cookie problem, a failed JS runtime),
+        // and reporting one line hid exactly the part that explains why.
+        let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
+        let start = lines.len().saturating_sub(STDERR_TAIL_LINES);
+        let message = if lines.is_empty() {
+            "yt-dlp exited with an error".to_string()
+        } else {
+            lines[start..].join("\n")
+        };
+        return VideoFormats::failed(url, command, message);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -146,7 +174,7 @@ fn probe_one(ytdlp: &Path, parameters: &[String], proxy: &str, url: &str) -> Vid
         .collect();
 
     let Some(first) = docs.first() else {
-        return VideoFormats::failed(url, "yt-dlp returned no video metadata".to_string());
+        return VideoFormats::failed(url, command, "yt-dlp returned no video metadata".to_string());
     };
 
     let mut title = as_string(first, "title", url);
@@ -161,7 +189,7 @@ fn probe_one(ytdlp: &Path, parameters: &[String], proxy: &str, url: &str) -> Vid
         .unwrap_or_default();
 
     if formats.is_empty() {
-        return VideoFormats::failed(url, "no downloadable formats found".to_string());
+        return VideoFormats::failed(url, command, "no downloadable formats found".to_string());
     }
 
     VideoFormats {
@@ -170,6 +198,7 @@ fn probe_one(ytdlp: &Path, parameters: &[String], proxy: &str, url: &str) -> Vid
         video_id: as_string(first, "id", ""),
         formats,
         error: None,
+        command,
     }
 }
 
@@ -201,7 +230,7 @@ pub async fn probe_formats(app: AppHandle, request: ProbeRequest) -> Result<Vec<
                     .map(|(handle, url)| {
                         handle
                             .join()
-                            .unwrap_or_else(|_| VideoFormats::failed(url, "probe thread panicked".to_string()))
+                            .unwrap_or_else(|_| VideoFormats::failed(url, String::new(), "probe thread panicked".to_string()))
                     })
                     .collect()
             });
@@ -211,4 +240,46 @@ pub async fn probe_formats(app: AppHandle, request: ProbeRequest) -> Result<Vec<
     })
     .await
     .map_err(|e| format!("probe task failed: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_format;
+    use serde_json::json;
+
+    #[test]
+    fn keeps_formats_that_report_no_codec_metadata() {
+        // Shape taken from a real PornHub probe: a direct progressive mp4
+        // whose extractor reports neither codec. These were being dropped as
+        // if they were storyboards, hiding half the picker's list — and they
+        // are frequently the format worth choosing.
+        let entry = parse_format(&json!({
+            "format_id": "1080p", "ext": "mp4", "resolution": "1080p",
+            "protocol": "https", "vcodec": null, "acodec": null
+        }))
+        .expect("a real format with unreported codecs must stay selectable");
+        assert_eq!(entry.format_id, "1080p");
+        assert_eq!(entry.vcodec, "none");
+    }
+
+    #[test]
+    fn drops_storyboard_image_sheets() {
+        // Shape taken from a real YouTube probe. These are grids of preview
+        // images, so picking one downloads no video at all.
+        assert!(parse_format(&json!({
+            "format_id": "sb0", "ext": "mhtml", "resolution": "48x27",
+            "protocol": "mhtml", "vcodec": "none", "acodec": "none"
+        }))
+        .is_none());
+    }
+
+    #[test]
+    fn keeps_ordinary_adaptive_streams() {
+        let entry = parse_format(&json!({
+            "format_id": "hls-9562", "ext": "mp4", "resolution": "3840x2160",
+            "protocol": "m3u8_native", "vcodec": "avc1.640034", "acodec": "mp4a.40.2"
+        }))
+        .expect("adaptive stream must be selectable");
+        assert_eq!(entry.acodec, "mp4a.40.2");
+    }
 }

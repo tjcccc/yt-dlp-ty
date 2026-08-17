@@ -120,7 +120,11 @@ export function ConfigPage() {
   };
 
   return (
-    <div className="p-6 flex flex-col gap-4 max-w-xl">
+    // Same wrapper geometry as MainPage (pt-1 under the drag strip, one
+    // shared max width, centred) so the page title lands in exactly the same
+    // spot when switching views and the content doesn't hug the left edge on
+    // a stretched window.
+    <div className="flex flex-col gap-4 px-6 pt-1 pb-6 w-full max-w-3xl mx-auto">
       <h1 className="text-[20px] font-semibold">Config</h1>
 
       <BinaryRow

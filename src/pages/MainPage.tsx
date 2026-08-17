@@ -23,7 +23,10 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
   const [mode, setMode] = useState<OptionsMode>("raw");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
+  // Confirmation is shown on the button itself rather than as a separate
+  // note beside it: the label is where the user is already looking after
+  // clicking, and a floating note added a line that shifted the layout.
+  const [justSaved, setJustSaved] = useState(false);
   const [ytdlpStatus, setYtdlpStatus] = useState<BinaryCheck | null>(null);
   const [ffmpegStatus, setFfmpegStatus] = useState<BinaryCheck | null>(null);
   // Non-null once the "Choose format first" picker is open; `probing` covers
@@ -68,8 +71,8 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
       parameters,
       options: { mode },
     });
-    setSavedNote("Saved");
-    setTimeout(() => setSavedNote(null), 2000);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1800);
   }
 
   /// In "Choose format first" mode the Download button probes and opens the
@@ -125,6 +128,7 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
           etaSeconds: null,
           overallPercent: 0,
           errorMessage: null,
+          command: null,
         });
       });
       onStarted();
@@ -140,7 +144,10 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
   }
 
   return (
-    <div className="p-6 flex flex-col gap-5 max-w-2xl">
+    // h-full + a growing Parameters row: the form fills the window instead of
+    // stacking at the top and leaving dead space below, so the primary actions
+    // sit at the bottom edge where a macOS window puts them.
+    <div className="h-full flex flex-col gap-5 px-6 pt-1 pb-6 w-full max-w-3xl mx-auto">
       {probed !== null && (
         <ChooseFormatModal
           videos={probed}
@@ -183,42 +190,59 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
         />
       </label>
 
-      <div className="flex gap-6">
-        <label className="flex flex-col gap-1.5 flex-1">
+      {/* This row absorbs the leftover height, which is what pushes the
+          action buttons to the bottom of the window. */}
+      <div className="flex gap-6 flex-1 min-h-0">
+        <label className="flex flex-col gap-1.5 flex-1 min-h-0">
           <span className="text-[14px] font-medium">Parameters</span>
           <textarea
             value={parameters}
             onChange={(e) => setParameters(e.target.value)}
-            rows={4}
-            placeholder="--no-playlist"
-            className="resize-none rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/35"
+            // Multi-line placeholder: flags can be written one per line as
+            // well as space-separated, and showing that is the only way the
+            // field communicates it.
+            placeholder={"--no-playlist\n--cookies-from-browser chrome"}
+            // min-h keeps it usable when the window is short enough that
+            // flex-1 would otherwise squeeze it to nothing.
+            className="flex-1 min-h-24 resize-none rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/35"
           />
         </label>
 
-        <div className="w-56 shrink-0">
+        {/* The actions live in this column, pinned to its bottom, so the
+            Parameters field opposite them can run all the way down to the
+            same baseline. As a full-width row underneath they instead forced
+            a band of dead space above themselves. Stacked rather than
+            side-by-side because two labelled buttons don't fit 224px. */}
+        <div className="w-56 shrink-0 flex flex-col">
           <OptionsPanel mode={mode} onChange={setMode} />
+
+          <div className="mt-auto flex flex-col gap-2 pt-4">
+            <button
+              onClick={handleSaveTemplate}
+              disabled={!dirty}
+              // While confirming, the button is disabled (the edits are no
+              // longer dirty) but must not also look greyed out — so the
+              // confirming branch simply omits `disabled:opacity-40`.
+              className={`w-full rounded-md border px-3 py-2 text-[13px] transition-colors ${
+                justSaved
+                  ? "border-[var(--accent)] bg-[var(--surface)] text-[var(--accent-fg)] font-medium"
+                  : "border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--hover)] disabled:opacity-40"
+              }`}
+            >
+              {justSaved ? "Saved" : "Save to template"}
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={urls.length === 0 || submitting}
+              className="w-full rounded-md bg-[var(--accent)] disabled:opacity-40 text-[var(--text-on-accent)] px-4 py-2 text-[14px] font-medium hover:bg-[var(--accent-hover)]"
+            >
+              Download
+            </button>
+          </div>
         </div>
       </div>
 
       {error && <p className="text-[13px] text-[var(--danger)]">{error}</p>}
-
-      <div className="self-end flex items-center gap-3">
-        {savedNote && <span className="text-[12px] text-[var(--text-tertiary)]">{savedNote}</span>}
-        <button
-          onClick={handleSaveTemplate}
-          disabled={!dirty}
-          className="rounded-md border border-[var(--border)] bg-[var(--surface)] disabled:opacity-40 px-3 py-2 text-[13px] hover:bg-[var(--hover)]"
-        >
-          Save to template
-        </button>
-        <button
-          onClick={handleDownload}
-          disabled={urls.length === 0 || submitting}
-          className="rounded-md bg-[var(--accent)] disabled:opacity-40 text-[var(--text-on-accent)] px-4 py-2 text-[14px] font-medium hover:bg-[var(--accent-hover)]"
-        >
-          Download
-        </button>
-      </div>
     </div>
   );
 }

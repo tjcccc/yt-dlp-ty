@@ -521,3 +521,98 @@ template, Parameters), never on prose, with numeric columns using `tabular-nums`
 proportional face. One code fix fell out of writing that up: `FormatTable` hardcoded
 `rounded-[12px]` instead of the `--radius-md` token, so the spec's single-source geometry
 rule was only coincidentally satisfied.
+
+## 2026-08-17 (later) — v0.1.1: post-M4 fixes from real use
+
+Hands-on testing after Milestone 4 turned up a batch of defects, several of
+them in code shipped by earlier milestones. Grouped by what they broke.
+
+**The window could not be dragged — two independent causes.** Milestone 4 set
+`titleBarStyle: "Overlay"` + `hiddenTitle` so the sidebar could run to the top
+edge, which removes the OS title bar you would normally drag by. Fixing that
+took two goes:
+1. The replacement `data-tauri-drag-region` was *bare*. Reading Tauri's own
+   `src/window/scripts/drag.js` (2.11.5) settles what that means: a bare
+   region only drags when the click lands on that exact element
+   (`return el === composedPath[0]`); `"deep"` is what makes a subtree
+   draggable. The sidebar is almost entirely covered by its children, so only
+   the hairline gaps between rows worked. Both regions are now `"deep"`;
+   Tauri still exempts buttons and inputs, so controls keep working.
+2. Even then nothing moved, because the drag script invokes
+   `plugin:window|start_dragging` over IPC and **`core:window:default` does
+   not grant it** — it grants only `allow-internal-toggle-maximize`, the
+   double-click-to-maximize half. The ACL denied the call silently, with no
+   error anywhere in the UI. Added `core:window:allow-start-dragging` to
+   `capabilities/default.json` (this one needs a rebuild; capabilities are
+   compiled in, so hot reload can't deliver it).
+
+Then it regressed a third time on the Downloading view, because `App.tsx` had
+a duplicated early return for it that rendered neither the sidebar nor the
+drag strip. Collapsed both branches into one shell that owns the drag strip
+and the traffic-light inset, with the sidebar conditional — a new view can no
+longer forget the window chrome. Note `main` deliberately paints no
+background: the old branch did, and in a unified shell that would sit behind
+the sidebar and kill the vibrancy.
+
+**The format picker failed or lied on real sites.** Reported against PornHub.
+The user's theory was that argument order mattered; running both orderings
+disproved that (they fail identically — their confirming test had a `--j`
+typo, which yt-dlp prefix-matched to a JS-runtime option and swallowed
+`--no-color` as its value). The real cause: `-j` doesn't only dump metadata,
+it also **resolves the format selector**, and aborts with "Requested format is
+not available" whenever the default `bv*+ba/b` matches nothing — i.e. it fails
+on exactly the videos the picker exists for, while `-F` merely lists and so
+always worked by hand. `build_probe_args` now passes
+`--ignore-no-formats-error`: selection is the user's job in this flow, and a
+genuinely unavailable video still returns an empty list.
+
+Fixing that exposed a worse bug of ours. The storyboard filter dropped any
+format where **both** codecs were `"none"` — but plenty of extractors report
+no codec metadata for direct progressive downloads (PornHub's
+`240p`/`1080p`/`2160p` have null vcodec *and* null acodec). Six of twelve
+formats, often the best ones to pick, were being discarded before reaching the
+table. Storyboards are now identified by their `mhtml` container, which still
+excludes YouTube's `sb0`-`sb3` sheets. Three regression tests pin this using
+the real JSON shapes from both sites.
+
+**Silent failures made diagnosable.** A probe failure kept only the *last*
+non-empty stderr line, which with yt-dlp is the least informative part — the
+actual cause is usually a WARNING several lines above the terminating ERROR.
+Now keeps a 25-line tail. Added `CommandDetails`: both the picker and download
+rows expose the exact shell-quoted invocation (resolved binary path included,
+so you can see *which* yt-dlp ran and whether cookie/proxy flags reached it),
+plus the failure log. The command is emitted once on the spawn event rather
+than every progress tick, and the reducer preserves it as later ticks arrive
+with null. The modal previously showed only `failed[0].error`, so with several
+bad URLs you saw one message and couldn't reach the others; failures are
+per-row now, and failed rows became selectable (they were `disabled`, which is
+how you reach their log) while staying excluded from the Download gate.
+
+**Two more backend defects found by reading, not by symptom:**
+- `fill_slots` checked `running_count()` before the slow `Command::spawn`, so
+  two jobs finishing at the same instant could both claim one slot and exceed
+  the concurrency cap. Now holds `JobRegistry::lock_fill` across the whole
+  check→pop→spawn→insert sequence.
+- `apply_mode`/`build_download_args` used `shell_words::split(...)
+  .unwrap_or_default()`, so a single unbalanced quote in Parameters silently
+  discarded **every** flag — cookies, proxy, `--no-playlist` — and downloaded
+  anyway, looking normal. Parameters are now tokenized once up front and a
+  parse failure surfaces as a UI error; they travel as `Vec<String>` end to
+  end so the failure mode can't return.
+
+**Smaller UI corrections:** Parameters accepts one flag per line (already
+worked — `shell_words` treats newlines as separators — now pinned by tests and
+advertised by the placeholder, since nothing communicated it); the Parameters
+field grows to share a bottom baseline with the action buttons, which moved
+into the right column because as a full-width row underneath they forced a
+band of dead space; "Saved" now appears on the Save button itself for ~1.8s
+instead of as a floating note that shifted the layout; the config button no
+longer uses the filled surface that `TemplateRow` uses for *selection* (it
+read as a fourth, permanently-selected template) and gained a sliders icon —
+a gear turned to mush at 15px; content is capped and centred on all three
+pages rather than hugging the left edge on a stretched window, which also
+aligned the Config title with the template title.
+
+Verified: 22 Rust tests, `tsc --noEmit`, `cargo check` clean. The probe fix
+and format filter were checked against live output from both sites. Not
+verifiable from here: an actual mouse drag, and `yt-dlp -U`.

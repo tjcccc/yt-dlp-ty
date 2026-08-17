@@ -10,6 +10,7 @@ export interface JobState {
   etaSeconds: number | null;
   overallPercent: number | null;
   errorMessage: string | null;
+  command: string | null;
 }
 
 export interface JobsSlice {
@@ -33,6 +34,9 @@ function applyEvent(job: JobState, event: JobProgressEvent): JobState {
     etaSeconds: event.etaSeconds,
     overallPercent: event.overallPercent,
     errorMessage: event.errorMessage,
+    // The command is sent once, on the spawn event; every later tick carries
+    // null, so keep the value already held rather than clearing it.
+    command: event.command ?? job.command,
   };
 }
 

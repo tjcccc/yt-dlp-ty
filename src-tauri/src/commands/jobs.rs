@@ -51,6 +51,10 @@ pub struct JobProgressEvent {
     /// failure (e.g. a merge step that can't find ffmpeg, a real extractor
     /// error) is diagnosable from the UI instead of a bare "Error" label.
     pub error_message: Option<String>,
+    /// The shell-quoted command this job runs. Sent once, on the first event
+    /// after spawn, rather than on every progress tick — it never changes and
+    /// progress is emitted several times a second.
+    pub command: Option<String>,
 }
 
 impl JobProgressEvent {
@@ -64,6 +68,7 @@ impl JobProgressEvent {
             eta_seconds: None,
             overall_percent: if phase == "completed" { Some(100.0) } else { None },
             error_message: None,
+            command: None,
         }
     }
 
@@ -178,6 +183,13 @@ fn spawn_pending(app: AppHandle, registry: JobRegistry, pending: PendingJob) {
         proxy: Some(proxy),
     });
     let merge_expected = expects_merge(&args);
+    // Shell-quoted so it can be pasted into a terminal unchanged, which is
+    // the fastest way to tell an app bug apart from a yt-dlp/site problem.
+    let command = {
+        let mut parts = vec![ytdlp_path.to_string_lossy().to_string()];
+        parts.extend(args.iter().cloned());
+        shell_words::join(&parts)
+    };
 
     let child = Command::new(&ytdlp_path)
         .args(&args)
@@ -206,7 +218,14 @@ fn spawn_pending(app: AppHandle, registry: JobRegistry, pending: PendingJob) {
     let stderr_tail = spawn_stderr_reader(stderr);
 
     registry.insert(job_id.clone(), child);
-    let _ = app.emit("job://progress", JobProgressEvent { downloaded_bytes: None, total_bytes: None, speed_bps: None, eta_seconds: None, overall_percent: Some(0.0), error_message: None, ..JobProgressEvent::terminal(&job_id, "downloading") });
+    let _ = app.emit(
+        "job://progress",
+        JobProgressEvent {
+            overall_percent: Some(0.0),
+            command: Some(command),
+            ..JobProgressEvent::terminal(&job_id, "downloading")
+        },
+    );
 
     spawn_progress_reader(app, registry, job_id, stdout, stderr_tail, merge_expected);
 }
@@ -257,6 +276,7 @@ fn spawn_progress_reader(
                         eta_seconds: fields.eta_seconds,
                         overall_percent: Some(overall_percent),
                         error_message: None,
+                        command: None,
                     },
                 );
             } else if is_merge_line(&line) {

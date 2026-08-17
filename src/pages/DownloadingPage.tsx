@@ -11,14 +11,13 @@ export function DownloadingPage({ onBack }: { onBack: () => void }) {
   const jobs = Object.values(jobsRecord);
 
   return (
-    // pt-10 clears the traffic lights: this view has no sidebar, so with the
-    // overlay title bar the heading would otherwise sit right beneath them.
-    // The header doubles as the drag region, since there's no title bar to
-    // grab the window by.
-    <div className="h-full flex flex-col gap-4 px-6 pb-6 pt-10">
-      <h1 data-tauri-drag-region className="text-[20px] font-semibold">
-        Downloading
-      </h1>
+    // Same wrapper geometry as the other pages, so the title lands in the
+    // same spot across views. The traffic-light inset and the drag region are
+    // both provided by the shell in App.tsx now — the heading no longer has
+    // to double as the grab handle, which only worked when clicked exactly on
+    // its text.
+    <div className="h-full flex flex-col gap-4 px-6 pt-1 pb-6 w-full max-w-3xl mx-auto">
+      <h1 className="text-[20px] font-semibold">Downloading</h1>
 
       <div className="flex flex-col gap-2">
         {jobs.map((job) => (

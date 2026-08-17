@@ -24,26 +24,40 @@ function App() {
     loadConfig();
   }, [loadTemplates, loadConfig]);
 
-  if (view === "downloading") {
-    return (
-      <main className="h-screen w-screen text-[var(--text-primary)] overflow-hidden bg-[var(--surface-sunken)]">
-        <DownloadingPage onBack={() => setView("main")} />
-      </main>
-    );
-  }
-
+  // One layout for every view rather than an early return for Downloading.
+  // That split is what let the drag region regress: the Downloading branch
+  // rendered neither the sidebar nor the drag strip, so its window had
+  // nothing draggable at all. Keeping a single shell means a new view can't
+  // forget the window chrome.
+  //
+  // `main` deliberately carries no background — the window is transparent so
+  // the OS vibrancy material shows through the sidebar, and an opaque
+  // ancestor there would hide it. Only the content column paints.
   return (
     <main className="h-screen w-screen text-[var(--text-primary)] overflow-hidden flex">
-      {/* Picking a template must also leave the Config page — otherwise the
-          sidebar selection changes under a Config view that has no other way
-          back, stranding the user there. */}
-      <Sidebar onOpenConfig={() => setView("config")} onTemplateActivated={() => setView("main")} />
+      {/* Downloading is a focused task view with no sidebar, per the mockups.
+          Elsewhere: picking a template must also leave the Config page —
+          otherwise the sidebar selection changes under a Config view that has
+          no other way back, stranding the user there. */}
+      {view !== "downloading" && (
+        <Sidebar onOpenConfig={() => setView("config")} onTemplateActivated={() => setView("main")} />
+      )}
       {/* Content layer: opaque. Only the sidebar is glass, so the window's
           vibrancy reads there and never behind form fields or tables
           (spec/ui.md layer rules). */}
-      <div className="flex-1 overflow-y-auto bg-[var(--surface-sunken)]">
-        {view === "main" && <MainPage onStarted={() => setView("downloading")} />}
-        {view === "config" && <ConfigPage />}
+      <div className="flex-1 min-w-0 flex flex-col bg-[var(--surface-sunken)]">
+        {/* The window hides its title bar (titleBarStyle: Overlay), so there
+            is no OS chrome to grab — every draggable area has to be provided
+            by the app. "deep" because Tauri only drags from a bare region
+            when the click lands on that exact element. Height matches the
+            sidebar's top inset so the band is continuous across the
+            title-bar row. */}
+        <div data-tauri-drag-region="deep" className="h-9 shrink-0" />
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {view === "main" && <MainPage onStarted={() => setView("downloading")} />}
+          {view === "config" && <ConfigPage />}
+          {view === "downloading" && <DownloadingPage onBack={() => setView("main")} />}
+        </div>
       </div>
     </main>
   );
