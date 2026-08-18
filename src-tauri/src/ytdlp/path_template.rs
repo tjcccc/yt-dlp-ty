@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::commands::templates::consume_next_seq;
@@ -47,7 +47,16 @@ pub fn resolve(app: &AppHandle, template_id: &str, raw: &str) -> String {
     let mut resolved = prefix.replace("{date:YYYY-MM-DD}", &today);
 
     if resolved.contains("{id:N") {
-        let seq = consume_next_seq(app, template_id);
+        // The counter lives in SQLite now, so this needs the managed
+        // connection. Falling back to 1 when state is somehow unavailable
+        // keeps path resolution total rather than panicking mid-download.
+        let seq = app
+            .try_state::<crate::db::Db>()
+            .map(|db| {
+                let conn = db.0.lock().unwrap();
+                consume_next_seq(&conn, template_id)
+            })
+            .unwrap_or(1);
         resolved = replace_seq_token(&resolved, seq);
     }
     if resolved.contains("{id:guid}") {

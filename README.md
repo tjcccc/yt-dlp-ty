@@ -57,6 +57,53 @@ pnpm exec tsc --noEmit          # frontend types
 cd src-tauri && cargo test      # backend unit tests
 ```
 
+## Building a production app
+
+```sh
+pnpm install
+pnpm tauri build
+```
+
+Output lands under `src-tauri/target/release/bundle/`:
+
+- **macOS** — `macos/yt-dlp-ty.app`, plus a `.dmg` if that step succeeds
+- **Windows** — `msi/` and `nsis/` installers
+- **Linux** — `deb/`, `rpm/`, and `appimage/`
+
+The first build compiles the whole Rust dependency tree and takes a while;
+later builds are much faster. `src-tauri/target/` grows to several GB — it is
+a disposable cache, safe to delete with `cargo clean`.
+
+`yt-dlp` and `ffmpeg` are **not** bundled. A built app detects them at
+runtime, so they must be installed on the target machine (see Prerequisites).
+A Finder- or Explorer-launched app inherits no shell `PATH`, which is why the
+app probes common install locations and offers a manual path override on the
+Config page.
+
+### Known issues
+
+- **The macOS `.dmg` step can fail** with `Finder got an error: AppleEvent
+  timed out (-1712)`. That step drives Finder over AppleScript to lay the
+  disk image out, and it needs an interactive session — it fails when run
+  headless or over SSH. The `.app` itself is already built and usable at that
+  point; `pnpm tauri build --bundles app` skips the `.dmg` entirely.
+- **The build is unsigned and un-notarised.** macOS Gatekeeper will refuse to
+  open it on any machine other than the one that built it, with a message
+  about an unidentified developer. Right-click the app and choose *Open* to
+  bypass it once. Proper signing and notarisation (an Apple Developer
+  account, `codesign`, and `notarytool`) is the real fix and is not set up
+  here.
+- **macOS window vibrancy uses `macos-private-api`**, which disqualifies the
+  app from the Mac App Store. Direct distribution only — a recorded non-goal,
+  not an oversight.
+
+### Where your data lives
+
+Templates, settings, and download history are stored in a SQLite database in
+the platform app-data directory (on macOS,
+`~/Library/Application Support/com.ytdlpty.app/ytdlpty.sqlite3`). Deleting it
+resets the app to its seeded templates. Nothing is written into the repo.
+
 ## License
 
 See `LICENSE`.

@@ -1,9 +1,18 @@
 import type { OptionsMode } from "../types";
 
+/// Labels, not behaviour, were the problem here. "Best video" already fetched
+/// best video *and* best audio (`bestvideo+bestaudio/best`) and "Best audio"
+/// meant audio-only extraction — so they read as two combinable halves when
+/// they were really three separate strategies, and mutual exclusion looked
+/// like a bug. Renaming states what each one does; "Audio only" is kept
+/// rather than dropped because extracting just the audio is a real use, and
+/// nothing else in the app offers it.
+///
+/// The stored `mode` values are unchanged, so saved templates keep working.
 const OPTIONS: { mode: OptionsMode; label: string; disabled?: boolean }[] = [
   { mode: "chooseFormat", label: "Choose format first" },
-  { mode: "bestVideo", label: "Best video" },
-  { mode: "bestAudio", label: "Best audio" },
+  { mode: "bestVideo", label: "Best video + audio" },
+  { mode: "bestAudio", label: "Audio only" },
 ];
 
 // The three toggles behave as one mutually-exclusive strategy, not
@@ -12,7 +21,7 @@ const OPTIONS: { mode: OptionsMode; label: string; disabled?: boolean }[] = [
 export function OptionsPanel({ mode, onChange }: { mode: OptionsMode; onChange: (mode: OptionsMode) => void }) {
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-[14px] font-medium">Options (override)</span>
+      <span className="text-[14px] font-medium">Format</span>
       <div className="flex flex-col gap-2">
         {OPTIONS.map((opt) => {
           const on = mode === opt.mode;
@@ -44,8 +53,10 @@ export function OptionsPanel({ mode, onChange }: { mode: OptionsMode; onChange: 
       {mode !== "raw" && (
         <p className="text-[12px] text-[var(--text-tertiary)]">
           {mode === "chooseFormat"
-            ? "Download will list each video's formats to pick from first. Any -f/--format flag in Parameters is replaced."
-            : "A format option is on — any -f/--format flag already in Parameters is replaced."}
+            ? "Download lists each video's formats to pick from first. Replaces any -f/--format flag in Parameters."
+            : mode === "bestAudio"
+              ? "Downloads the audio stream only and extracts it to an audio file. Replaces any -f/--format flag in Parameters."
+              : "Downloads the best video and best audio available, merged into one file. Replaces any -f/--format flag in Parameters."}
         </p>
       )}
     </div>

@@ -3,11 +3,12 @@ import { Sidebar } from "./components/Sidebar";
 import { onJobProgress } from "./lib/tauri";
 import { ConfigPage } from "./pages/ConfigPage";
 import { DownloadingPage } from "./pages/DownloadingPage";
+import { HistoryPage } from "./pages/HistoryPage";
 import { MainPage } from "./pages/MainPage";
 import { useStore } from "./state/store";
 
 function App() {
-  const [view, setView] = useState<"main" | "config" | "downloading">("main");
+  const [view, setView] = useState<"main" | "config" | "history" | "downloading">("main");
   const updateJobProgress = useStore((s) => s.updateJobProgress);
   const loadTemplates = useStore((s) => s.loadTemplates);
   const loadConfig = useStore((s) => s.loadConfig);
@@ -40,7 +41,11 @@ function App() {
           otherwise the sidebar selection changes under a Config view that has
           no other way back, stranding the user there. */}
       {view !== "downloading" && (
-        <Sidebar onOpenConfig={() => setView("config")} onTemplateActivated={() => setView("main")} />
+        <Sidebar
+          onOpenConfig={() => setView("config")}
+          onOpenHistory={() => setView("history")}
+          onTemplateActivated={() => setView("main")}
+        />
       )}
       {/* Content layer: opaque. Only the sidebar is glass, so the window's
           vibrancy reads there and never behind form fields or tables
@@ -56,6 +61,7 @@ function App() {
         <div className="flex-1 min-h-0 overflow-y-auto">
           {view === "main" && <MainPage onStarted={() => setView("downloading")} />}
           {view === "config" && <ConfigPage />}
+          {view === "history" && <HistoryPage />}
           {view === "downloading" && <DownloadingPage onBack={() => setView("main")} />}
         </div>
       </div>

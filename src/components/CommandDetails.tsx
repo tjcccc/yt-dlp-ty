@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CopyButton } from "./CopyButton";
 
 /// Shows the exact yt-dlp invocation behind an operation, plus its failure
 /// output when there is one.
@@ -20,23 +21,8 @@ export function CommandDetails({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen || !!log);
-  const [copied, setCopied] = useState(false);
 
   if (!command && !log) return null;
-
-  const copy = async () => {
-    if (!command) return;
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard access can be refused by the webview; the command text is
-      // selectable either way, so fall back to saying nothing rather than
-      // claiming a copy that didn't happen.
-      setCopied(false);
-    }
-  };
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -47,14 +33,7 @@ export function CommandDetails({
         >
           {open ? "▾" : "▸"} command{log ? " & log" : ""}
         </button>
-        {open && command && (
-          <button
-            onClick={copy}
-            className="text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-          >
-            {copied ? "copied" : "copy"}
-          </button>
-        )}
+        {open && command && <CopyButton value={command} />}
       </div>
 
       {open && (

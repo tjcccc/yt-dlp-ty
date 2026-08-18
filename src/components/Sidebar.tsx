@@ -5,9 +5,11 @@ import { TemplateRow } from "./TemplateRow";
 // sits above the (opaque) content area — never the reverse.
 export function Sidebar({
   onOpenConfig,
+  onOpenHistory,
   onTemplateActivated,
 }: {
   onOpenConfig: () => void;
+  onOpenHistory: () => void;
   /// Fired whenever the user picks or creates a template, so the shell can
   /// switch back to the main form (see App.tsx).
   onTemplateActivated: () => void;
@@ -68,33 +70,63 @@ export function Sidebar({
         )}
       </div>
 
-      {/* A filled surface here read as a *selected template* — that's exactly
-          the treatment TemplateRow uses for selection — so config looked like
-          a fourth, permanently-active list item. It's a utility action, not a
-          list entry: transparent by default, tinting only on hover, with a
-          gear to separate it from the names above at a glance. */}
-      <button
-        onClick={onOpenConfig}
-        title="Config"
-        className="flex items-center gap-2 text-[13px] px-2.5 py-2 rounded-md text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text-primary)]"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          aria-hidden="true"
-          className="w-[15px] h-[15px] shrink-0"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.3"
+      {/* Utility actions, not list entries. A filled surface here read as a
+          *selected template* — exactly the treatment TemplateRow uses for
+          selection — so they looked like extra, permanently-active items in
+          the list above. Transparent by default, tinting only on hover, each
+          with an icon to separate it from the names at a glance.
+
+          Grouped in their own tighter stack: they belong together, and at the
+          sidebar's 12px rhythm they read as two unrelated items rather than
+          one footer. */}
+      <div className="flex flex-col gap-0.5">
+        <button
+          onClick={onOpenHistory}
+          title="History"
+          className="flex items-center gap-2 text-[13px] px-2.5 py-2 rounded-md text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text-primary)]"
         >
-          {/* Sliders rather than a gear: an 8-tooth gear turns to mush at
+          <svg
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            className="w-[15px] h-[15px] shrink-0"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+          >
+            {/* A clock: the one glyph that reads as "earlier" at this size. */}
+            <circle cx="8" cy="8" r="6.1" />
+            <path
+              d="M8 4.4V8.2l2.5 1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          History
+        </button>
+
+        <button
+          onClick={onOpenConfig}
+          title="Config"
+          className="flex items-center gap-2 text-[13px] px-2.5 py-2 rounded-md text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text-primary)]"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            className="w-[15px] h-[15px] shrink-0"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+          >
+            {/* Sliders rather than a gear: an 8-tooth gear turns to mush at
               15px, while two tracks and two knobs stay legible and read
               just as clearly as "settings". */}
-          <path d="M2 5h12M2 11h12" strokeLinecap="round" />
-          <circle cx="6" cy="5" r="1.7" fill="var(--glass-nav)" />
-          <circle cx="10.5" cy="11" r="1.7" fill="var(--glass-nav)" />
-        </svg>
-        Config
-      </button>
+            <path d="M2 5h12M2 11h12" strokeLinecap="round" />
+            <circle cx="6" cy="5" r="1.7" fill="var(--glass-nav)" />
+            <circle cx="10.5" cy="11" r="1.7" fill="var(--glass-nav)" />
+          </svg>
+          Config
+        </button>
+      </div>
     </aside>
   );
 }

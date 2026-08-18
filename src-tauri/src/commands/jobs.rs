@@ -2,14 +2,20 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 
-use tauri::{AppHandle, Emitter, State};
+// `Manager` is needed for `try_state`: the history write happens on the
+// reader thread after the process exits, where the Db handle has to be
+// fetched from app state rather than passed down.
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 use crate::commands::binaries::resolve_configured;
 use crate::commands::config::load_config;
+use crate::commands::history;
+use crate::db::{Db, DbState};
 use crate::registry::{JobRegistry, PendingJob};
 use crate::ytdlp::args::{
     apply_chosen_format, apply_mode, build_download_args, ChosenFormat, DownloadRequest as ArgsRequest,
+    PRINT_EXTRACTOR_PREFIX, PRINT_PATH_PREFIX,
 };
 use crate::ytdlp::path_template;
 use crate::ytdlp::progress::{expects_merge, is_merge_line, parse_progress_line, PassTracker};
@@ -105,6 +111,7 @@ fn spawn_stderr_reader(stderr: std::process::ChildStderr) -> std::sync::Arc<std:
 pub fn start_downloads(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
+    db: DbState<'_>,
     request: MultiDownloadRequest,
 ) -> Result<Vec<String>, String> {
     let resolved_ffmpeg = resolve_configured(&app, "ffmpeg");
@@ -125,6 +132,11 @@ pub fn start_downloads(
         }
     }
 
+    let template_name = {
+        let conn = db.0.lock().unwrap();
+        crate::commands::templates::template_name(&conn, &request.template_id)
+    };
+
     let mut job_ids = Vec::with_capacity(request.urls.len());
     for url in request.urls {
         let job_id = Uuid::new_v4().to_string();
@@ -143,6 +155,7 @@ pub fn start_downloads(
             download_to: resolved_download_to,
             parameters,
             ffmpeg_path: ffmpeg_path.clone(),
+            template_name: template_name.clone(),
         });
         job_ids.push(job_id);
     }
@@ -175,6 +188,7 @@ fn spawn_pending(app: AppHandle, registry: JobRegistry, pending: PendingJob) {
     // Read fresh at spawn time (not queue time) so a proxy change on the
     // Config page takes effect for jobs still waiting on a concurrency slot.
     let proxy = load_config(&app).proxy;
+    let url = pending.url.clone();
     let args = build_download_args(&ArgsRequest {
         url: pending.url,
         download_to: pending.download_to,
@@ -222,12 +236,86 @@ fn spawn_pending(app: AppHandle, registry: JobRegistry, pending: PendingJob) {
         "job://progress",
         JobProgressEvent {
             overall_percent: Some(0.0),
-            command: Some(command),
+            command: Some(command.clone()),
             ..JobProgressEvent::terminal(&job_id, "downloading")
         },
     );
 
-    spawn_progress_reader(app, registry, job_id, stdout, stderr_tail, merge_expected);
+    spawn_progress_reader(
+        app,
+        registry,
+        job_id,
+        stdout,
+        stderr_tail,
+        merge_expected,
+        HistoryContext {
+            url,
+            template_name: pending.template_name,
+            started_at: chrono::Utc::now(),
+            command,
+        },
+    );
+}
+
+/// Everything a history row needs that the reader thread can't derive from
+/// yt-dlp's output alone.
+struct HistoryContext {
+    url: String,
+    template_name: Option<String>,
+    started_at: chrono::DateTime<chrono::Utc>,
+    /// Cloned rather than borrowed from the progress event: that event moves
+    /// the command out, and history is written much later on the reader
+    /// thread once the process has exited.
+    command: String,
+}
+
+/// Falls back to the URL's host when yt-dlp doesn't report an extractor —
+/// "pornhub.com" is still more use in the history list than an empty cell.
+fn host_of(url: &str) -> Option<String> {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    let host = after_scheme.split('/').next()?;
+    (!host.is_empty()).then(|| host.trim_start_matches("www.").to_string())
+}
+
+fn record_history(
+    app: &AppHandle,
+    ctx: &HistoryContext,
+    status: &str,
+    filepath: Option<String>,
+    extractor: Option<String>,
+) {
+    let Some(db) = app.try_state::<Db>() else { return };
+    let finished_at = chrono::Utc::now();
+    // The filesystem is authoritative for size: yt-dlp's reported total is an
+    // estimate for adaptive streams, and after a merge it describes neither
+    // of the two source streams.
+    let size_bytes = filepath
+        .as_ref()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len() as i64);
+    let filename = filepath.as_ref().and_then(|p| {
+        std::path::Path::new(p)
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+    });
+
+    let conn = db.0.lock().unwrap();
+    history::record(
+        &conn,
+        &history::NewEntry {
+            filename,
+            filepath,
+            platform: extractor.or_else(|| host_of(&ctx.url)),
+            template_name: ctx.template_name.clone(),
+            url: ctx.url.clone(),
+            started_at: ctx.started_at.to_rfc3339(),
+            finished_at: finished_at.to_rfc3339(),
+            duration_ms: (finished_at - ctx.started_at).num_milliseconds(),
+            size_bytes,
+            status: status.to_string(),
+            command: Some(ctx.command.clone()),
+        },
+    );
 }
 
 fn spawn_progress_reader(
@@ -237,10 +325,15 @@ fn spawn_progress_reader(
     stdout: std::process::ChildStdout,
     stderr_tail: std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>,
     merge_expected: bool,
+    history_ctx: HistoryContext,
 ) {
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         let mut tracker = PassTracker::new(merge_expected);
+        // Captured from the `--print after_move:` lines. Absent when the
+        // download never got as far as producing a file.
+        let mut final_path: Option<String> = None;
+        let mut extractor: Option<String> = None;
         let tail_text = |tail: &std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>| {
             let buf = tail.lock().unwrap();
             let text = buf.iter().cloned().collect::<Vec<_>>().join("\n");
@@ -249,6 +342,15 @@ fn spawn_progress_reader(
 
         for line in reader.lines() {
             let Ok(line) = line else { break };
+
+            if let Some(rest) = line.strip_prefix(PRINT_PATH_PREFIX) {
+                final_path = Some(rest.trim().to_string());
+                continue;
+            }
+            if let Some(rest) = line.strip_prefix(PRINT_EXTRACTOR_PREFIX) {
+                extractor = Some(rest.trim().to_string());
+                continue;
+            }
 
             if let Some(fields) = parse_progress_line(&line) {
                 if fields.status == "error" {
@@ -299,16 +401,34 @@ fn spawn_progress_reader(
         // double-emitting.
         if let Some(mut child) = registry.remove(&job_id) {
             let status = child.wait();
-            let event = match status {
-                Ok(s) if s.success() => JobProgressEvent::terminal(&job_id, "completed"),
-                _ => JobProgressEvent::error(
+            let succeeded = matches!(&status, Ok(s) if s.success());
+            let event = if succeeded {
+                JobProgressEvent::terminal(&job_id, "completed")
+            } else {
+                JobProgressEvent::error(
                     &job_id,
                     tail_text(&stderr_tail).unwrap_or_else(|| "yt-dlp exited with an error".to_string()),
-                ),
+                )
             };
             let _ = app.emit("job://progress", event);
+            record_history(
+                &app,
+                &history_ctx,
+                if succeeded { "completed" } else { "error" },
+                final_path,
+                extractor,
+            );
             // A slot just freed up — backfill from the queue, if any.
             fill_slots(&app, registry);
+        } else {
+            // The job is gone from the registry, so cancellation removed it
+            // and already emitted the terminal event. It still ran, so it
+            // still belongs in history — recorded here rather than in
+            // `cancel_job`, which has only a job id and none of the context
+            // this thread holds. (A job cancelled while still queued never
+            // spawned a reader and is deliberately not recorded: nothing
+            // happened to remember.)
+            record_history(&app, &history_ctx, "cancelled", final_path, extractor);
         }
     });
 }

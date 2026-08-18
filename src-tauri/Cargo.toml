@@ -1,6 +1,6 @@
 [package]
 name = "yt-dlp-ty"
-version = "0.1.1"
+version = "0.2.0"
 description = "A cross-platform GUI for yt-dlp"
 authors = ["you"]
 edition = "2021"
@@ -31,4 +31,8 @@ uuid = { version = "1", features = ["v4"] }
 shell-words = "1"
 dirs = "5"
 chrono = "0.4"
+# `bundled` compiles SQLite into the binary rather than linking a system
+# copy. That matters for the Windows and Fedora builds: no libsqlite3 to
+# install, and every platform gets the same version.
+rusqlite = { version = "0.32", features = ["bundled"] }
 

@@ -16,6 +16,10 @@ pub struct PendingJob {
     /// it's resolved once up front rather than per pending job.
     pub parameters: Vec<String>,
     pub ffmpeg_path: Option<String>,
+    /// Snapshotted at queue time rather than looked up when the job ends:
+    /// the template can be renamed or deleted while the job is still in the
+    /// queue, and history should record the name that was actually in use.
+    pub template_name: Option<String>,
 }
 
 /// Shared job registry. Cheaply `Clone`-able (an `Arc` clone) so a copy can

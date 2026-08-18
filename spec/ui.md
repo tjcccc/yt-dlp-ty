@@ -96,8 +96,11 @@ variation" rule:
 ## Components
 
 - **Toggle switches**: rounded pill, green fill when on, matching the mockup — used as a
-  mutually-exclusive radio group for the "Options (override)" section (see plan §Options
-  toggle precedence), not independent booleans.
+  mutually-exclusive radio group for the "Format" section (see plan §Options toggle
+  precedence), not independent booleans. Because they *look* like independent booleans,
+  each label must name a complete outcome ("Best video + audio", "Audio only"), never a
+  half that reads as combinable with the next one — an earlier "Best video" / "Best audio"
+  pair made the mutual exclusion look like a bug.
 - **Buttons**: primary action (Download) uses the accent tint per the glass-tint rule above;
   destructive actions (Cancel, Cancel All) use a restrained red, not full-saturation alarm
   red.

@@ -94,3 +94,22 @@ export interface BinaryCheck {
   version: string | null;
   error: string | null;
 }
+
+/// One finished download. Mirrors `commands::history::HistoryEntry`.
+/// `filepath` is carried for provenance only — the app deliberately offers no
+/// open/reveal action, since it is a downloader rather than a media library.
+export interface HistoryEntry {
+  id: number;
+  filename: string | null;
+  filepath: string | null;
+  platform: string | null;
+  templateName: string | null;
+  url: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  sizeBytes: number | null;
+  status: string;
+  /// Null for rows recorded before the command column was added.
+  command: string | null;
+}

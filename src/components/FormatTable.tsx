@@ -35,10 +35,18 @@ function shortCodec(codec: string): string {
 
 /// Fixed leading columns keep the numbers aligned; the two codec columns
 /// share the remaining width so nothing overflows the modal at the default
-/// window size (the previous layout forced a horizontal scrollbar that hid
+/// window size (an earlier layout forced a horizontal scrollbar that hid
 /// ACODEC entirely).
+///
+/// ID takes the flexible column and everything else is fixed. Site format
+/// ids are not all short like YouTube's `137` — Instagram emits
+/// `dash-1796271141547558v`, which wrapped onto two lines at the original
+/// 4rem and knocked the rest of the row out of vertical alignment. It's the
+/// one column whose content genuinely varies, so it should absorb the spare
+/// width; the codec columns held it before and never needed more than four
+/// characters (`vp09`, `mp4a`, `—`).
 const COLUMNS =
-  "grid grid-cols-[4rem_3.5rem_6.5rem_3rem_5.5rem_4rem_4.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 items-center";
+  "grid grid-cols-[minmax(0,1fr)_2.75rem_5rem_2.5rem_4.5rem_4rem_4rem_4.5rem_4.5rem] gap-x-2 items-center";
 
 export function FormatTable({
   formats,
@@ -65,7 +73,11 @@ export function FormatTable({
         <span>Audio</span>
       </div>
 
-      <div className="divide-y divide-[var(--border)]">
+      {/* Scrolls on its own rather than relying on an ancestor to bound it.
+          A viewport-relative cap can't fail to resolve, so a long format list
+          is always reachable — depending on the modal's flex chain left rows
+          silently clipped with no scrollbar when it didn't work out. */}
+      <div className="divide-y divide-[var(--border)] max-h-[50vh] overflow-y-auto">
         {formats.map((f) => {
           const selected = f.formatId === selectedFormatId;
           const audioOnly = f.vcodec === "none";
@@ -80,7 +92,17 @@ export function FormatTable({
                   : "hover:bg-[var(--hover)] text-[var(--text-primary)]"
               }`}
             >
-              <span className={`font-mono tabular-nums ${selected ? "" : "text-[var(--text-primary)]"}`}>
+              {/* Plain trailing ellipsis. An earlier attempt truncated from
+                  the left, on the theory that ids sharing a prefix need
+                  their tail to stay distinguishable — but with the column
+                  now wide enough that case is rare, and RTL rendered badly
+                  in practice: a leading `…` *and* a clipped final glyph. */}
+              <span
+                title={f.formatId}
+                className={`font-mono tabular-nums truncate ${
+                  selected ? "" : "text-[var(--text-primary)]"
+                }`}
+              >
                 {f.formatId}
               </span>
               <span className={selected ? "" : "text-[var(--text-secondary)]"}>{f.ext}</span>
@@ -90,7 +112,14 @@ export function FormatTable({
               <span className="text-right tabular-nums">{formatFps(f.fps)}</span>
               <span className="text-right tabular-nums">{formatSize(f.filesize)}</span>
               <span className="text-right tabular-nums">{formatTbr(f.tbr)}</span>
-              <span className={selected ? "" : "text-[var(--text-secondary)]"}>{f.proto}</span>
+              {/* `m3u8_native` overruns this column; clip it rather than
+                  let it push the codec columns around. */}
+              <span
+                title={f.proto}
+                className={`truncate ${selected ? "" : "text-[var(--text-secondary)]"}`}
+              >
+                {f.proto}
+              </span>
               <span className="truncate" title={f.vcodec}>
                 {shortCodec(f.vcodec)}
               </span>

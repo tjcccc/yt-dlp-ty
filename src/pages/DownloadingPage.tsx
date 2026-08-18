@@ -19,13 +19,18 @@ export function DownloadingPage({ onBack }: { onBack: () => void }) {
     <div className="h-full flex flex-col gap-4 px-6 pt-1 pb-6 w-full max-w-3xl mx-auto">
       <h1 className="text-[20px] font-semibold">Downloading</h1>
 
-      <div className="flex flex-col gap-2">
+      {/* The queue scrolls, the action bar stays put. Previously the whole
+          page scrolled inside the shell, which had two consequences: the
+          page's own bottom padding collapsed against the window edge once
+          content overflowed (the buttons ended up flush with the corner),
+          and reaching Cancel All meant scrolling past every queued job. */}
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
         {jobs.map((job) => (
           <DownloadRow key={job.jobId} job={job} />
         ))}
       </div>
 
-      <div className="mt-auto flex justify-end gap-3">
+      <div className="shrink-0 flex justify-end gap-3">
         <button
           onClick={() => cancelAll()}
           className="text-[13px] px-3 py-1.5 rounded-md bg-[var(--danger-bg)] text-[var(--danger)] hover:bg-[var(--danger-bg-hover)]"

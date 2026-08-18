@@ -45,8 +45,18 @@ export function ChooseFormatModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--scrim)] flex items-center justify-center p-8">
-      <div className="w-full max-w-4xl max-h-full flex flex-col gap-4 rounded-lg bg-[var(--glass-overlay)] backdrop-blur-2xl shadow-2xl border border-[var(--border)] p-6">
-        <h2 className="text-[20px] font-semibold">Choose format first</h2>
+      {/* max-h in viewport units, not `max-h-full`: a percentage max-height
+          has to resolve against an ancestor, and getting that wrong leaves
+          the sheet unbounded so the flex-1 body never becomes scrollable —
+          the list just gets clipped with no way to reach the rest. */}
+      <div className="w-full max-w-4xl max-h-[85vh] flex flex-col gap-4 rounded-lg bg-[var(--glass-overlay)] backdrop-blur-2xl shadow-2xl border border-[var(--border)] p-6">
+        {/* The sheet covers the whole window, including the shell's drag
+            strip, so while it's open the window has no grab area at all
+            unless the sheet provides one. Its title row is the natural
+            handle — same as a real macOS sheet. */}
+        <div data-tauri-drag-region="deep" className="shrink-0">
+          <h2 className="text-[20px] font-semibold">Choose format first</h2>
+        </div>
 
         {loading ? (
           <p className="text-[13px] text-[var(--text-secondary)] py-8 text-center">

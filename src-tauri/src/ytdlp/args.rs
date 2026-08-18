@@ -22,6 +22,12 @@ pub struct DownloadRequest {
 
 const PROGRESS_TEMPLATE: &str = "dl:%(info.id)s|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s";
 
+/// Prefixes marking the two `--print` lines apart from yt-dlp's own chatter
+/// on stdout. Distinctive enough that a video title can't be mistaken for
+/// one.
+pub const PRINT_PATH_PREFIX: &str = "ytdlpty-path:";
+pub const PRINT_EXTRACTOR_PREFIX: &str = "ytdlpty-extractor:";
+
 /// Expands a leading `~` to the user's home directory. yt-dlp is invoked
 /// directly (no shell), so `~` is never expanded by the OS the way it would
 /// be on a command line — this must happen here.
@@ -171,6 +177,19 @@ pub fn build_download_args(req: &DownloadRequest) -> Vec<String> {
     args.push("--no-color".to_string());
     args.push("--progress-template".to_string());
     args.push(PROGRESS_TEMPLATE.to_string());
+    // Where the history row's filename and platform come from. `after_move:`
+    // is what makes these safe: a bare `--print` implies `--quiet` and
+    // `--simulate` (i.e. no download at all), but supplying a WHEN prefix
+    // suppresses both, and the field is only resolvable after post-
+    // processing has settled on a final path anyway.
+    //
+    // Two flags rather than one delimited line: `--print` emits `\t`
+    // literally rather than as a tab, so any single-line encoding would need
+    // a separator that could also appear in a filename.
+    args.push("--print".to_string());
+    args.push(format!("after_move:{PRINT_PATH_PREFIX}%(filepath)s"));
+    args.push("--print".to_string());
+    args.push(format!("after_move:{PRINT_EXTRACTOR_PREFIX}%(extractor_key)s"));
     if let Some(ffmpeg_path) = &req.ffmpeg_path {
         args.push("--ffmpeg-location".to_string());
         args.push(ffmpeg_path.clone());

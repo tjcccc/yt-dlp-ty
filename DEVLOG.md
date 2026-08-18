@@ -616,3 +616,104 @@ aligned the Config title with the template title.
 Verified: 22 Rust tests, `tsc --noEmit`, `cargo check` clean. The probe fix
 and format filter were checked against live output from both sites. Not
 verifiable from here: an actual mouse drag, and `yt-dlp -U`.
+
+## 2026-08-18 — v0.2.0: SQLite storage, download history, UI corrections
+
+### SQLite replaces the JSON stores
+
+Templates, settings, and the new history now live in `ytdlpty.sqlite3` in the
+app data dir, via `rusqlite` with the `bundled` feature. Direct SQL rather
+than `tauri-plugin-sql`: every caller (templates, config, history, the job
+runner) is already Rust-side, so routing persistence through the webview
+would add an IPC hop and put raw SQL in the frontend for nothing. `bundled`
+also means no system SQLite dependency, which matters for the Windows and
+Fedora testing to come. WAL mode, since a long read (the history list) and a
+write (a job finishing) genuinely overlap here.
+
+Migration precedence is existing rows → legacy JSON → built-in seeds, so an
+upgrade imports rather than reseeds. The legacy `templates.json` / `config.json`
+are deliberately left in place as a fallback copy. Verified against the real
+store, not a synthetic one: all seven customised templates came across with
+their modes, download paths, order, and — critically — `next_seq` intact.
+Resetting that counter would have restarted `{id:NNN}` numbering and collided
+with files already on disk.
+
+Command names and their wire shapes are unchanged, so the frontend contract
+didn't move.
+
+### Download history
+
+One row per terminal outcome, written from the job runner. The output path and
+platform come from yt-dlp itself via two `--print after_move:` flags (a `WHEN:`
+prefix means neither `--quiet` nor `--simulate` is implied; two flags rather
+than one delimited line because `\t` inside a single `--print` is emitted
+literally). Size is read from the filesystem afterwards, which is authoritative
+— yt-dlp's total is an estimate for adaptive streams and describes neither
+source stream after a merge. `template_name` is snapshotted at queue time,
+since the template can be renamed or deleted while the job is still queued.
+
+Failures and cancellations are recorded too, but the view lists only completed
+downloads: showing failures would need a status column that wasn't asked for,
+and such rows have no filename or size to fill the columns that exist.
+
+The view is a plain list like the Downloading page, reached from a History
+button beside Config. Each row shows filename, size, finish time with
+duration, `platform · template`, the URL, and the exact command — each of the
+last two with its own labelled copy button ("copy link" / "copy command"),
+because two bare "copy" buttons in one row are distinguishable only by
+position. Scoped deliberately narrow: no thumbnails, no open/reveal action, no
+search or export. It records what was fetched; it is not a media library.
+
+### A migration bug worth remembering
+
+Bumping `SCHEMA_VERSION` and adding the `ALTER TABLE` it described landed in
+two separate edits, and the dev server rebuilt in between. The app started,
+saw `current < 2`, bumped `user_version` to 2, and ran a migration that did
+not exist yet. Once the counter said 2 the version-gated step could never run
+again, leaving the `command` column permanently absent while the code selected
+it — which silently drops every row through `filter_map(Result::ok)`.
+
+Fixed by making additive migrations check the real schema (`PRAGMA
+table_info`) instead of trusting the counter to be in step. That is
+self-healing, costs one pragma at startup, and repaired the affected database
+in place with all rows preserved. A version counter is a fine trigger for
+*ordered* work but a poor witness to what the tables actually contain.
+
+### UI corrections from real use
+
+- **Format table columns.** The ID column was fixed-width and long site ids
+  (`dash-1796271141547558v`) wrapped onto two lines, knocking the rest of the
+  row out of vertical alignment. ID now takes the flexible column and the
+  codec columns are fixed — they never needed more than four characters. An
+  attempt at left-truncation (so ids sharing a prefix stayed distinguishable
+  by their tail) was reverted: `direction: rtl` on mixed Latin/digit text
+  produced a leading ellipsis *and* a clipped final glyph.
+- **Format list scrolling** no longer depends on the modal's flex chain to
+  bound it; the rows body caps at `50vh` and scrolls on its own. A percentage
+  `max-h` that fails to resolve leaves the sheet unbounded, so the list is
+  clipped with no scrollbar at all.
+- **The modal covers the shell's drag strip**, so it now carries its own drag
+  handle on the title row — otherwise the window can't be moved while a sheet
+  is open.
+- **"Options (override)" is now "Format"**, and the toggles name complete
+  outcomes: "Best video + audio" (which is what the old "Best video" always
+  did) and "Audio only". The old pair read as two combinable halves, which
+  made the mutual exclusion look like a bug. Stored `mode` values unchanged.
+- **Downloading queue** scrolls with its action bar pinned outside, so the
+  page's bottom padding stops collapsing against the window edge once the
+  queue overflows, and Cancel All is reachable without scrolling past every
+  job.
+- **Window opens at 1100×780** (minimum 880×600, centred). 1100 is where the
+  format sheet reaches its max width; the old 760 minimum squeezed the ID
+  column to about eight characters.
+- `CopyButton` extracted, so the clipboard path exists once.
+
+README gained a production-build section: per-platform output paths, the
+runtime yt-dlp/ffmpeg requirement, where the database lives, and the two real
+blockers — the `.dmg` step needing an interactive session, and the build being
+unsigned so Gatekeeper blocks it elsewhere.
+
+Verified: 22 Rust tests, `tsc --noEmit`, `cargo check` clean. Migration and the
+history view were checked against the live database and by viewing the running
+app. History capture is confirmed end-to-end by real downloads recording
+correct filenames, platforms, sizes, and durations.

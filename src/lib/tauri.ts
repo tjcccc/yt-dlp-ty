@@ -5,6 +5,7 @@ import type {
   BinaryCheck,
   JobProgressEvent,
   MultiDownloadRequest,
+  HistoryEntry,
   Template,
   VideoFormats,
 } from "../types";
@@ -61,4 +62,12 @@ export function getConfig(): Promise<AppConfig> {
 
 export function setConfig(config: AppConfig): Promise<AppConfig> {
   return invoke("set_config", { config });
+}
+
+export function listHistory(limit?: number, offset?: number): Promise<HistoryEntry[]> {
+  return invoke("list_history", { limit: limit ?? null, offset: offset ?? null });
+}
+
+export function clearHistory(): Promise<void> {
+  return invoke("clear_history");
 }
