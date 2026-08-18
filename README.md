@@ -3,9 +3,13 @@
 A pretty, cross-platform desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp),
 styled to feel like a native macOS app.
 
-**Status: working, in development.** Downloading, templates, config, and the format picker
-all run. Remaining: the macOS "Liquid Glass" visual pass and packaging (Milestone 4). See
-`DEVLOG.md` for progress and `spec/ui.md` for the design system.
+The `ty` is `yt` backwards — and it stands for *thank you*. This app doesn't
+download anything itself; yt-dlp does all the hard work, and this is just a good
+window onto it.
+
+**Status: working, in development.** Downloading, templates, config, the format picker,
+and download history all run. Remaining: an app icon, code signing, and verification on
+Windows and Linux. See `DEVLOG.md` for progress and `spec/ui.md` for the design system.
 
 ## Features
 

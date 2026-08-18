@@ -34,7 +34,10 @@ export function Sidebar({
       data-tauri-drag-region="deep"
       className="w-56 shrink-0 h-full flex flex-col gap-3 px-3 pb-4 pt-9 bg-[var(--glass-nav)] backdrop-blur-xl border-r border-[var(--border)]"
     >
-      <h1 className="text-[20px] font-semibold px-2">yt-dlp-ty</h1>
+      {/* "ty" is "yt" backwards and stands for thank you — yt-dlp does the
+          real work, this is a window onto it. Spelled out here rather than
+          left as an initialism nobody can decode. */}
+      <h1 className="text-[19px] font-semibold px-2 leading-tight">yt-dlp, Thank you!</h1>
 
       <div className="flex items-center justify-between pl-2 pr-1 mt-2">
         <span className="text-[12px] text-[var(--text-tertiary)] uppercase tracking-wide">
