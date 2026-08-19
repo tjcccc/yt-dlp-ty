@@ -787,3 +787,52 @@ that a real cancel needs a probe registry and a `cancel_probe` command.
 Verified: `cargo check`, `cargo test`, `tsc --noEmit`, and `pnpm build` clean,
 plus the queue and format sheet checked in the running app at a short window
 height.
+
+## 2026-08-19 (later) — v0.2.2: partial probe cancel
+
+Cancelling the format picker now tells the backend to stop, via a `ProbeEpoch`
+counter in app state (`commands/formats.rs`). `probe_formats` reads the counter
+once at start; `cancel_probe` bumps it; the batch loop compares the two between
+chunks and stops spawning further ones. A counter rather than a flag so that
+cancelling batch N cannot also abort a batch N+1 the user started a moment
+later. Whatever was collected before the break is still returned — the frontend
+run token added earlier is what discards the result of a probe nobody owns any
+more, and the two mechanisms are not interchangeable: the token stops the UI
+from acting on a result, the epoch stops the backend from doing more work.
+
+**This is deliberately partial.** yt-dlp children already running are left to
+finish; only the *next* chunk is prevented. With a single URL there is one
+chunk holding one process, so nothing is actually stopped and the call is
+bookkeeping only. It pays off for a multi-URL paste, where chunks after the
+first are the bulk of the work.
+
+### Deferred: killing the probe children
+
+Recorded here so the design does not have to be rediscovered. Worth doing when
+the app has enough users that wasted background work matters; not before.
+
+`probe_one` uses `Command::output()`, which spawns and waits in one call and
+never yields a `Child`, so there is nothing to kill. Making probes killable
+means spawning them the way `commands/jobs.rs` already spawns downloads:
+
+1. `registry.rs` — hold probe children keyed by a batch id,
+   `HashMap<String, Vec<Child>>`, plus a `kill_probe(id)`. One probe fans out
+   across URLs, so the unit is a group, not a single child.
+2. `formats.rs` — `probe_one` spawns with piped stdio and registers its child.
+   The trap: `output()` drains stdout and stderr *concurrently*, and reading
+   them sequentially deadlocks once a chatty yt-dlp fills the stderr pipe
+   buffer while the reader is blocked on stdout. `wait_with_output()` avoids
+   that but consumes the `Child`, so it cannot be combined with keeping the
+   child in a registry. `jobs.rs:225-234` already solves exactly this — take
+   both pipes, spawn a stderr reader thread, register the child, drain stdout,
+   then `registry.remove().wait()`. `wait` is mandatory: a killed-but-unwaited
+   child lingers as a zombie (`jobs.rs:104`).
+3. `lib.rs` — extend `cancel_probe` to kill the batch, keeping the epoch bump
+   so the between-chunk stop still applies to queued chunks.
+4. Frontend — mint a batch id per probe and pass it to both calls. The run
+   token stays regardless: a killed probe still returns partial results that
+   the UI must ignore.
+
+Verified for this change: `cargo test` (22 passed), `cargo check`, `pnpm build`.
+The epoch path is not covered by a test — it needs a real multi-chunk batch and
+a cancel mid-flight, which is an integration test this repo has no harness for.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { OptionsPanel } from "../components/OptionsPanel";
-import { checkBinary, probeFormats, startDownloads } from "../lib/tauri";
+import { cancelProbe, checkBinary, probeFormats, startDownloads } from "../lib/tauri";
 import { useStore } from "../state/store";
 import type { BinaryCheck, ChosenFormat, OptionsMode, VideoFormats } from "../types";
 import { ChooseFormatModal } from "./ChooseFormatModal";
@@ -168,6 +168,10 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
             probeRun.current++;
             setProbed(null);
             setProbing(false);
+            // Stops the backend from starting further chunks. The token bump
+            // above is what makes the UI ignore whatever the current chunk
+            // still returns — the two are not interchangeable.
+            void cancelProbe();
           }}
           onConfirm={(chosen) => {
             setProbed(null);

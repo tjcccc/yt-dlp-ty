@@ -1,9 +1,10 @@
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager, State};
 
 use crate::commands::binaries::resolve_configured;
 use crate::commands::config::load_config;
@@ -202,6 +203,28 @@ fn probe_one(ytdlp: &Path, parameters: &[String], proxy: &str, url: &str) -> Vid
     }
 }
 
+/// Counter identifying the probe batch that currently owns the picker.
+///
+/// Cancelling bumps it; a running batch compares it against the value it read
+/// at start and stops between chunks once they differ. A counter rather than a
+/// flag so that cancelling batch N can't also abort a batch N+1 the user
+/// started immediately afterwards.
+#[derive(Default)]
+pub struct ProbeEpoch(AtomicU64);
+
+/// Stops the running probe batch at its next chunk boundary.
+///
+/// Deliberately partial: it does not kill the yt-dlp children already running,
+/// so with a single URL — one chunk, one process — nothing is actually stopped
+/// and this is a no-op beyond bookkeeping. Killing the children means spawning
+/// them with retained handles instead of `Command::output()`, which is written
+/// up in DEVLOG under v0.2.2 and deferred until the wasted work is worth the
+/// restructuring.
+#[tauri::command]
+pub fn cancel_probe(epoch: State<'_, ProbeEpoch>) {
+    epoch.0.fetch_add(1, Ordering::SeqCst);
+}
+
 /// Fetches available formats for each URL without downloading anything.
 ///
 /// Runs on a blocking thread: each probe spawns a real yt-dlp process that
@@ -217,8 +240,20 @@ pub async fn probe_formats(app: AppHandle, request: ProbeRequest) -> Result<Vec<
         let ytdlp = resolve_configured(&app, "yt-dlp");
         let chunk_size = (config.concurrency.max(1) as usize).min(8);
 
+        // Read once at the start: everything spawned by this call belongs to
+        // this epoch, and a later cancel is what makes the two disagree.
+        let epoch = app.state::<ProbeEpoch>();
+        let mine = epoch.0.load(Ordering::SeqCst);
+
         let mut results: Vec<VideoFormats> = Vec::with_capacity(request.urls.len());
         for chunk in request.urls.chunks(chunk_size) {
+            // Checked between chunks only — the chunk already in flight runs
+            // to completion. Whatever has been collected so far is returned
+            // rather than discarded here; the caller drops the result of a
+            // probe it no longer owns (see MainPage's probe run token).
+            if epoch.0.load(Ordering::SeqCst) != mine {
+                break;
+            }
             let probed: Vec<VideoFormats> = std::thread::scope(|scope| {
                 let handles: Vec<_> = chunk
                     .iter()

@@ -55,3 +55,8 @@ Milestone 2 merge-verification entries for how this was misdiagnosed once alread
 - No Mac App Store distribution — native vibrancy uses Tauri's `macos-private-api`, which
   disqualifies MAS submission. Direct-download distribution only.
 - No auto-update system unless explicitly requested later.
+- No killing of in-flight yt-dlp *probe* processes. Cancelling the format
+  picker stops the backend from starting further chunks, but the processes
+  already running finish and their output is discarded. The design for real
+  cancellation is written up in `DEVLOG.md` under v0.2.2 — deferred, not
+  forgotten.

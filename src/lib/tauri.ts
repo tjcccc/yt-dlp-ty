@@ -20,6 +20,13 @@ export function probeFormats(urls: string[], parameters: string): Promise<VideoF
   return invoke("probe_formats", { request: { urls, parameters } });
 }
 
+/// Stops the running probe batch at its next chunk boundary. Partial by
+/// design: yt-dlp processes already running are left to finish, so a
+/// single-URL probe is unaffected.
+export function cancelProbe(): Promise<void> {
+  return invoke("cancel_probe");
+}
+
 export function cancelJob(jobId: string): Promise<void> {
   return invoke("cancel_job", { jobId });
 }

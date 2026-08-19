@@ -5,7 +5,7 @@ mod ytdlp;
 
 use commands::binaries::{check_binary, update_ytdlp};
 use commands::config::{get_config, set_config};
-use commands::formats::probe_formats;
+use commands::formats::{cancel_probe, probe_formats, ProbeEpoch};
 use commands::history::{clear_history, list_history};
 use commands::jobs::{cancel_all, cancel_job, start_downloads};
 use commands::templates::{delete_template, list_templates, reorder_templates, save_template};
@@ -26,6 +26,7 @@ pub fn run() {
             Ok(())
         })
         .manage(JobRegistry::new())
+        .manage(ProbeEpoch::default())
         .invoke_handler(tauri::generate_handler![
             check_binary,
             update_ytdlp,
@@ -36,6 +37,7 @@ pub fn run() {
             delete_template,
             reorder_templates,
             probe_formats,
+            cancel_probe,
             start_downloads,
             cancel_job,
             cancel_all,
