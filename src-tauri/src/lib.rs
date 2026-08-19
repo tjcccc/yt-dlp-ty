@@ -17,10 +17,6 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        // Still registered even though templates and config now live in
-        // SQLite: the legacy JSON files it wrote are read once during
-        // migration, and are left in place afterwards as a fallback copy.
-        .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             // Opened once at startup rather than per command: the schema
             // migration must run before anything queries, and a single

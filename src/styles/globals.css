@@ -125,3 +125,30 @@ html.has-window-vibrancy body,
 html.has-window-vibrancy #root {
   background-color: transparent;
 }
+
+/* Scroll regions. macOS overlay scrollbars fade out at rest, so a bounded
+   list reads as content that was cut off rather than content you can reach —
+   which is exactly how the format table and the download queue were being
+   misread. Opting a region into a persistent thin scrollbar trades a little
+   native behaviour for an affordance that is always visible.
+   Applied deliberately per region, never globally: a blanket rule would also
+   put a horizontal bar under the format table's fixed grid, whose columns are
+   tuned to fit exactly. */
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}

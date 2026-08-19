@@ -39,12 +39,12 @@ export function CommandDetails({
       {open && (
         <div className="flex flex-col gap-1.5">
           {command && (
-            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all select-text rounded-md bg-[var(--surface-sunken)] border border-[var(--border)] px-2 py-1.5 text-[var(--text-secondary)] max-h-28 overflow-y-auto">
+            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all select-text rounded-md bg-[var(--surface-sunken)] border border-[var(--border)] px-2 py-1.5 text-[var(--text-secondary)] max-h-28 overflow-y-auto scroll-area">
               {command}
             </pre>
           )}
           {log && (
-            <pre className="text-[11px] font-mono whitespace-pre-wrap break-words select-text rounded-md bg-[var(--danger-bg)] px-2 py-1.5 text-[var(--danger)] max-h-40 overflow-y-auto">
+            <pre className="text-[11px] font-mono whitespace-pre-wrap break-words select-text rounded-md bg-[var(--danger-bg)] px-2 py-1.5 text-[var(--danger)] max-h-40 overflow-y-auto scroll-area">
               {log}
             </pre>
           )}

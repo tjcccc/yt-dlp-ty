@@ -36,7 +36,11 @@ export function DownloadRow({ job }: { job: JobState }) {
   const label = PHASE_LABEL[job.phase] || `${pct}%`;
 
   return (
-    <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+    // `shrink-0`: the queue is a flex column, and a flex item shrinks below
+    // its own height by default. Without it a long queue squeezed every row
+    // out of its `h-11` into a few px — URL, progress label and Cancel button
+    // all clipped away — instead of overflowing so the list could scroll.
+    <div className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
       <div className="relative h-11">
         <div
           className={`absolute inset-y-0 left-0 transition-[width] duration-300 ${PHASE_FILL[job.phase]}`}
@@ -61,7 +65,7 @@ export function DownloadRow({ job }: { job: JobState }) {
         </div>
       </div>
       {(job.command || job.errorMessage) && (
-        <div className="px-3 pb-2">
+        <div className="px-3 pt-1.5 pb-2.5">
           <CommandDetails
             command={job.command}
             log={job.phase === "error" ? job.errorMessage : null}

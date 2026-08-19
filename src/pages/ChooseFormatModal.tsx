@@ -45,15 +45,24 @@ export function ChooseFormatModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--scrim)] flex items-center justify-center p-8">
+      {/* The scrim covers the shell's title-bar drag strip, so the band people
+          actually reach for stops working the moment the sheet opens — the
+          window becomes unmovable while choosing a format. This restores it at
+          the same height as the strip in App.tsx. It sits under the sheet in
+          paint order, and where the two overlap it only covers the sheet's own
+          title row, which is a drag region anyway. */}
+      <div
+        data-tauri-drag-region="deep"
+        className="absolute top-0 left-0 right-0 h-9"
+      />
       {/* max-h in viewport units, not `max-h-full`: a percentage max-height
           has to resolve against an ancestor, and getting that wrong leaves
           the sheet unbounded so the flex-1 body never becomes scrollable —
           the list just gets clipped with no way to reach the rest. */}
-      <div className="w-full max-w-4xl max-h-[85vh] flex flex-col gap-4 rounded-lg bg-[var(--glass-overlay)] backdrop-blur-2xl shadow-2xl border border-[var(--border)] p-6">
-        {/* The sheet covers the whole window, including the shell's drag
-            strip, so while it's open the window has no grab area at all
-            unless the sheet provides one. Its title row is the natural
-            handle — same as a real macOS sheet. */}
+      <div className="relative w-full max-w-4xl max-h-[85vh] flex flex-col gap-4 rounded-lg bg-[var(--glass-overlay)] backdrop-blur-2xl shadow-2xl border border-[var(--border)] p-6">
+        {/* Second grab area, for when the sheet itself covers the strip above
+            (short window, tall sheet). Its title row is the natural handle —
+            same as a real macOS sheet. */}
         <div data-tauri-drag-region="deep" className="shrink-0">
           <h2 className="text-[20px] font-semibold">Choose format first</h2>
         </div>
@@ -64,7 +73,7 @@ export function ChooseFormatModal({
           </p>
         ) : (
           <>
-            <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] overflow-y-auto max-h-44 shrink-0">
+            <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] overflow-y-auto scroll-area max-h-44 shrink-0">
               {videos.map((v) => {
                 const pickedId = chosen[v.url]?.formatId;
                 return (
@@ -108,7 +117,12 @@ export function ChooseFormatModal({
               </p>
             )}
 
-            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+            {/* No scrolling of its own — it hands its height to the format
+                table, which is the single scroller in this region. Two nested
+                scrollers here meant the wheel chained between them and the
+                command block below sat outside the one under the cursor,
+                reading as a table whose last row had been cut off. */}
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
               {!active ? (
                 <p className="text-[13px] text-[var(--text-tertiary)]">No video selected.</p>
               ) : (
@@ -126,8 +140,11 @@ export function ChooseFormatModal({
                   )}
                   {/* Always available, not just on failure: seeing the exact
                       invocation is how you confirm the cookie/proxy flags
-                      really reached the probe that produced this list. */}
-                  <CommandDetails command={active.command} log={active.error} />
+                      really reached the probe that produced this list. Stays
+                      pinned under the table rather than scrolling with it. */}
+                  <div className="shrink-0">
+                    <CommandDetails command={active.command} log={active.error} />
+                  </div>
                 </>
               )}
             </div>

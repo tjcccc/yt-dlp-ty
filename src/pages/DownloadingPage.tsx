@@ -24,7 +24,7 @@ export function DownloadingPage({ onBack }: { onBack: () => void }) {
           page's own bottom padding collapsed against the window edge once
           content overflowed (the buttons ended up flush with the corner),
           and reaching Cancel All meant scrolling past every queued job. */}
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+      <div className="flex-1 min-h-0 overflow-y-auto scroll-area flex flex-col gap-2 pr-1">
         {jobs.map((job) => (
           <DownloadRow key={job.jobId} job={job} />
         ))}

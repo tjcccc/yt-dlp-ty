@@ -142,7 +142,7 @@ export function ConfigPage() {
         }
       />
       {updateOutput && (
-        <pre className="text-[11px] bg-[var(--hover)] rounded-md p-2 whitespace-pre-wrap max-h-32 overflow-y-auto">
+        <pre className="text-[11px] bg-[var(--hover)] rounded-md p-2 whitespace-pre-wrap max-h-32 overflow-y-auto scroll-area">
           {updateOutput}
         </pre>
       )}

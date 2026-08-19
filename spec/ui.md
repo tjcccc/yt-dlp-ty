@@ -127,6 +127,19 @@ variation" rule:
     uppercase. Its `-F` output is a CLI convention, not this app's.
   - Audio-only rows dim the resolution cell to `--text-tertiary`, so scanning for a video
     stream skips them without needing colour alone to say so.
+- **Scroll regions**: any bounded list gets the `.scroll-area` class from
+  `src/styles/globals.css` — a thin 8px scrollbar with a `--border-strong` thumb on a
+  transparent track, visible at rest. macOS overlay scrollbars fade out when idle, which
+  made a scrollable format table and a full download queue both look like content that
+  had been cut off. Three rules go with it:
+  - **One scroller per region.** A region sizes itself through the flex chain
+    (`min-h-0` on every link) and scrolls in exactly one place. Nested scrollers chain
+    the wheel unpredictably and push whatever sits below the inner one out of reach.
+  - **The scrollbar takes real width**, so anything that must stay column-aligned with
+    scrolling rows belongs *inside* the same scroller — the format table's header is a
+    `sticky top-0` row for this reason, not a sibling above the list.
+  - Apply it deliberately, never as a global rule: a blanket `::-webkit-scrollbar` would
+    also add a horizontal bar to the format table's fixed grid.
 
 ## Anti-Patterns (inherited from the global doc — do not violate)
 

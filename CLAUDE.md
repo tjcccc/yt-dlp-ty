@@ -8,8 +8,12 @@ A cross-platform desktop GUI for `yt-dlp`, styled to feel like a native macOS ap
 
 - Backend: Rust via Tauri v2 (`src-tauri/`). Frontend: React + TypeScript + Vite (`src/`).
 - Package manager: **pnpm only** — do not add npm/yarn lockfiles.
-- Templates (per-site presets) and app config persist as JSON via `tauri-plugin-store` in
-  the app's data dir, not in this repo.
+- Templates (per-site presets), app config, and download history persist in one SQLite
+  database in the app's data dir (`~/Library/Application Support/com.ytdlpty.app/` on
+  macOS, resolved per-platform by Tauri's `app_data_dir()`), not in this repo. Accessed
+  from Rust only, via `rusqlite` — see `src-tauri/src/db.rs`. The `templates.json` and
+  `config.json` beside it are the pre-SQLite `tauri-plugin-store` files, read once on
+  migration and then left alone as a backup copy.
 - All yt-dlp argument assembly and output-path templating logic lives in Rust
   (`src-tauri/src/ytdlp/`) as the single source of truth. Any frontend preview of args/paths
   is display-only — if it and Rust disagree, Rust wins.

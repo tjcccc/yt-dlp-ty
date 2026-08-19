@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { OptionsPanel } from "../components/OptionsPanel";
 import { checkBinary, probeFormats, startDownloads } from "../lib/tauri";
 import { useStore } from "../state/store";
@@ -34,6 +34,12 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
   // state instead of the window appearing frozen.
   const [probed, setProbed] = useState<VideoFormats[] | null>(null);
   const [probing, setProbing] = useState(false);
+  // Identifies the probe currently owning the picker. Cancelling bumps it, so
+  // a probe still in flight can't write its result into state when it lands —
+  // without this, cancelling during the fetch closed the sheet and then the
+  // resolving promise reopened it with the format table, which read as the
+  // Cancel button not working at all.
+  const probeRun = useRef(0);
 
   // Switching templates loads its fields into the form. Edits stay per-run
   // (so a one-off tweak doesn't mutate the preset) until the user explicitly
@@ -81,16 +87,22 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
   async function handleDownload() {
     if (!selectedTemplate || urls.length === 0) return;
     if (mode === "chooseFormat") {
+      const run = ++probeRun.current;
       setError(null);
       setProbed([]);
       setProbing(true);
       try {
-        setProbed(await probeFormats(urls, parameters));
+        const result = await probeFormats(urls, parameters);
+        if (probeRun.current !== run) return;
+        setProbed(result);
       } catch (e) {
+        if (probeRun.current !== run) return;
         setProbed(null);
         setError(String(e));
       } finally {
-        setProbing(false);
+        // Guarded like the rest: a newer probe owns `probing` by now, and
+        // clearing it here would drop that one out of its loading state.
+        if (probeRun.current === run) setProbing(false);
       }
       return;
     }
@@ -152,7 +164,11 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
         <ChooseFormatModal
           videos={probed}
           loading={probing}
-          onCancel={() => setProbed(null)}
+          onCancel={() => {
+            probeRun.current++;
+            setProbed(null);
+            setProbing(false);
+          }}
           onConfirm={(chosen) => {
             setProbed(null);
             startJobs(chosen);

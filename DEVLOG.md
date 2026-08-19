@@ -717,3 +717,73 @@ Verified: 22 Rust tests, `tsc --noEmit`, `cargo check` clean. Migration and the
 history view were checked against the live database and by viewing the running
 app. History capture is confirmed end-to-end by real downloads recording
 correct filenames, platforms, sizes, and durations.
+
+## 2026-08-19 — v0.2.1: scroll regions, queue rendering, probe cancel
+
+### Bounded lists were unreadable in three different ways
+
+All three reports looked like "content is cut off", and only one of them was.
+
+**Scrollbars were invisible.** macOS overlay scrollbars fade out at rest, so a
+list that scrolls perfectly well reads as a list that was truncated. Added a
+`.scroll-area` class (thin 8px, `--border-strong` thumb, transparent track,
+visible at rest) and applied it per region — the download queue, history, the
+format rows, the modal's URL list, the sidebar, and the command/error `<pre>`
+blocks. Deliberately not a global `*` rule: a blanket `::-webkit-scrollbar`
+would also put a horizontal bar under the format table, whose grid columns are
+tuned to fit the default window exactly.
+
+**The format table had two live scrollers.** Its rows capped at `50vh` while
+the modal body also scrolled, and at typical window heights both were active:
+the wheel chained between them and the command block sat outside whichever one
+was under the cursor. The rows are now the only scroller, sized by a `min-h-0`
+chain (sheet `max-h-[85vh]` → body → table root → rows), with the command block
+pinned below as a `shrink-0` sibling. The column header moved *inside* the
+scroller as `sticky top-0`, because a space-consuming scrollbar takes width
+from whatever it is attached to — a header outside the scroller would sit 8px
+wider than the rows and knock every column out of alignment. This reverses the
+"scrolls on its own rather than relying on an ancestor" note from v0.2.0; that
+cap was a workaround for a flex chain missing `min-h-0`, and the chain is now
+correct at every link.
+
+**The download queue was the only real clipping bug.** Rows set `h-11` but a
+flex item shrinks below its own height by default, so a 40-job queue compressed
+every row to a few pixels — URL, percentage and Cancel button all clipped away,
+no overflow, nothing to scroll. `shrink-0` on `DownloadRow` and `HistoryRow`
+fixes it. Reproduced with a throwaway `VITE_FAKE_JOBS` harness seeding 40 jobs,
+confirmed against the running app, harness removed.
+
+### Cancel during a format probe did not cancel
+
+Clicking Cancel while formats were still being fetched closed the sheet, and
+then the in-flight `probeFormats` promise resolved and wrote its result into
+state — reopening the sheet with the finished table, which read as the button
+doing nothing. Each probe now takes a run token from a ref; Cancel bumps it and
+a resolving probe that no longer owns the picker discards both its result and
+its `setProbing(false)`, so a quick Download → Cancel → Download can't leave the
+second probe out of its loading state. Note the yt-dlp probe children are still
+not killed — they run to completion and their output is thrown away. Making
+that a real cancel needs a probe registry and a `cancel_probe` command.
+
+### Smaller corrections
+
+- The format sheet covers the shell's title-bar drag strip, so the window could
+  not be moved while it was open. The overlay now carries its own strip at the
+  same height, with the sheet `relative` so it paints above it; the sheet's
+  title row remains a second handle for short windows where the two overlap.
+- The collapsed "command" line in a queue row sat flush against the card's
+  bottom edge.
+- `tauri-plugin-store` dropped from `Cargo.toml`, `package.json` and the
+  builder. Nothing had read through it since v0.2.0 — the legacy-JSON import
+  parses the file directly with `serde_json` — and the capability file never
+  granted `store:*` anyway.
+- `CLAUDE.md` still described templates and config as JSON via
+  `tauri-plugin-store`; it now describes the SQLite database, its per-platform
+  location, and the legacy files' status.
+- `spec/ui.md` gained a "Scroll regions" entry: the class, one-scroller-per-
+  region with `min-h-0` on every link, and why a column-aligned header belongs
+  inside the scroller.
+
+Verified: `cargo check`, `cargo test`, `tsc --noEmit`, and `pnpm build` clean,
+plus the queue and format sheet checked in the running app at a short window
+height.

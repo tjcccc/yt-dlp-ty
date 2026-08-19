@@ -43,7 +43,9 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const provenance = [entry.platform, entry.templateName].filter(Boolean).join(" · ");
 
   return (
-    <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 flex flex-col gap-1">
+    // `shrink-0` for the same reason as DownloadRow: rows in a flex column
+    // otherwise compress instead of letting the list overflow and scroll.
+    <div className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 flex flex-col gap-1">
       <div className="flex items-baseline gap-3">
         <span className="text-[13px] font-medium truncate" title={entry.filename ?? undefined}>
           {entry.filename ?? "(filename unknown)"}
@@ -110,7 +112,7 @@ export function HistoryPage() {
       {/* Scrolls on its own with the action bar pinned outside it — see
           DownloadingPage: page-level bottom padding collapses against the
           window edge once the content overflows a shared scroll container. */}
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+      <div className="flex-1 min-h-0 overflow-y-auto scroll-area flex flex-col gap-2 pr-1">
         {entries === null ? (
           <p className="text-[13px] text-[var(--text-tertiary)]">Loading…</p>
         ) : entries.length === 0 ? (

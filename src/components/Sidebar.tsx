@@ -52,7 +52,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="flex flex-col gap-1 flex-1 overflow-y-auto">
+      <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto scroll-area">
         {templates.map((t) => (
           <TemplateRow
             key={t.id}
