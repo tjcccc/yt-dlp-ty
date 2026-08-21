@@ -13,6 +13,9 @@ const PHASE_LABEL: Record<JobState["phase"], string> = {
   downloading: "",
   merging: "Merging…",
   completed: "Completed",
+  // Names the reason, not just the outcome: an instantly-finished job with a
+  // bare "Skipped" label reads as a failure the app declined to explain.
+  skipped: "Skipped — file exists",
   error: "Error",
   cancelled: "Cancelled",
 };
@@ -22,6 +25,9 @@ const PHASE_FILL: Record<JobState["phase"], string> = {
   downloading: "bg-[var(--progress-fill)]",
   merging: "bg-[var(--progress-fill-strong)]",
   completed: "bg-[var(--progress-fill-strong)]",
+  // Neutral rather than the success green: nothing was downloaded, and the
+  // spec reserves the accent/green family for what actually happened.
+  skipped: "bg-[var(--progress-fill-neutral)]",
   error: "bg-[var(--danger-bg-hover)]",
   cancelled: "bg-[var(--progress-fill-neutral)]",
 };
@@ -30,7 +36,10 @@ export function DownloadRow({ job }: { job: JobState }) {
   // overallPercent is the remapped, monotonically non-decreasing value from
   // the backend's PassTracker — a raw downloaded/total ratio would visibly
   // reset partway through any video+audio merge (see DEVLOG two-pass entry).
-  const pct = job.phase === "completed" ? 100 : Math.round(job.overallPercent ?? 0);
+  const pct =
+    job.phase === "completed" || job.phase === "skipped"
+      ? 100
+      : Math.round(job.overallPercent ?? 0);
 
   const isActive = job.phase === "queued" || job.phase === "downloading" || job.phase === "merging";
   const label = PHASE_LABEL[job.phase] || `${pct}%`;

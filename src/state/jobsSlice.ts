@@ -20,7 +20,18 @@ export interface JobsSlice {
   pendingEvents: Record<string, JobProgressEvent>;
   addJob: (job: JobState) => void;
   updateJobProgress: (event: JobProgressEvent) => void;
+  /// Drops every job that has reached a terminal state, keeping the ones
+  /// still running. Called when a new batch starts, so the Downloading page
+  /// shows that batch rather than a pile of results from previous runs.
+  clearFinishedJobs: () => void;
 }
+
+const TERMINAL_PHASES: ReadonlySet<JobPhase> = new Set<JobPhase>([
+  "completed",
+  "skipped",
+  "error",
+  "cancelled",
+]);
 
 type Set = (fn: (state: JobsSlice) => Partial<JobsSlice>) => void;
 
@@ -58,6 +69,22 @@ export const createJobsSlice = (set: Set): JobsSlice => ({
         jobs: { ...state.jobs, [job.jobId]: buffered ? applyEvent(job, buffered) : job },
         pendingEvents,
       };
+    }),
+
+  clearFinishedJobs: () =>
+    set((state) => {
+      const jobs: Record<string, JobState> = {};
+      // Rebuilt in insertion order, which is the order the queue renders in
+      // — so surviving in-flight jobs keep their relative positions and the
+      // new batch appends below them.
+      for (const [jobId, job] of Object.entries(state.jobs)) {
+        if (!TERMINAL_PHASES.has(job.phase)) jobs[jobId] = job;
+      }
+      // `pendingEvents` is deliberately untouched: an event is only ever
+      // buffered for a job the store hasn't seen yet, so none of them belong
+      // to a job being cleared here — dropping them would lose the state of
+      // a job that is just about to be registered.
+      return { jobs };
     }),
 
   updateJobProgress: (event) =>

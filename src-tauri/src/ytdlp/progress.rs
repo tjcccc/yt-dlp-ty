@@ -44,6 +44,20 @@ pub fn is_merge_line(line: &str) -> bool {
     line.contains("[Merger]") || line.contains("[ffmpeg]") || line.contains("Merging formats")
 }
 
+/// True for the line yt-dlp prints instead of downloading when the target
+/// file is already on disk: `[download] <path> has already been downloaded`
+/// (older builds append `and merged`). Matched on the substring rather than
+/// the whole line because the path in the middle is arbitrary.
+///
+/// This is yt-dlp's own existing-file check, which compares the *final
+/// output path* — a partially fetched file is still a `.part` and never
+/// matches, so a hit means a complete earlier download of the same name.
+/// Only reachable because `build_download_args` passes `--no-quiet`; with
+/// `--print`'s implied `--quiet` this line is never printed at all.
+pub fn is_already_downloaded_line(line: &str) -> bool {
+    line.contains("has already been downloaded")
+}
+
 /// Best-effort prediction of whether the given yt-dlp args imply a
 /// video+audio merge: an explicit `-f`/`--format` value containing `+`
 /// (two streams), or no explicit format selector at all — yt-dlp's modern
@@ -137,6 +151,39 @@ impl PassTracker {
         self.pass_index = self.pass_index.max(2);
         self.last_percent = self.last_percent.max(95.0);
         self.last_percent
+    }
+}
+
+#[cfg(test)]
+mod line_tests {
+    use super::{is_already_downloaded_line, is_merge_line, parse_progress_line};
+
+    #[test]
+    fn recognizes_the_skipped_file_line() {
+        assert!(is_already_downloaded_line(
+            "[download] /Users/me/Downloads/yt-dlp/pornhub/Clip.mp4 has already been downloaded"
+        ));
+        // Older yt-dlp builds report a merged target this way.
+        assert!(is_already_downloaded_line(
+            "[download] /Users/me/Clip.mkv has already been downloaded and merged"
+        ));
+    }
+
+    #[test]
+    fn ordinary_lines_are_not_mistaken_for_a_skip() {
+        assert!(!is_already_downloaded_line("[download] Destination: /Users/me/Clip.mp4"));
+        assert!(!is_already_downloaded_line("dl:abc|downloading|1024|2048|NA|NA|NA"));
+        // A title could mention downloading; only the exact phrase counts.
+        assert!(!is_already_downloaded_line("[download] How I downloaded a file.mp4"));
+    }
+
+    #[test]
+    fn skip_line_is_neither_progress_nor_merge() {
+        // The reader checks these in sequence, so a skip line must not be
+        // claimed by either of the other two matchers first.
+        let line = "[download] /Users/me/Clip.mp4 has already been downloaded";
+        assert!(parse_progress_line(line).is_none());
+        assert!(!is_merge_line(line));
     }
 }
 

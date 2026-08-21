@@ -18,7 +18,9 @@ use crate::ytdlp::args::{
     PRINT_EXTRACTOR_PREFIX, PRINT_PATH_PREFIX,
 };
 use crate::ytdlp::path_template;
-use crate::ytdlp::progress::{expects_merge, is_merge_line, parse_progress_line, PassTracker};
+use crate::ytdlp::progress::{
+    expects_merge, is_already_downloaded_line, is_merge_line, parse_progress_line, PassTracker,
+};
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +45,7 @@ pub struct MultiDownloadRequest {
 #[serde(rename_all = "camelCase")]
 pub struct JobProgressEvent {
     pub job_id: String,
-    pub phase: String, // "queued" | "downloading" | "merging" | "completed" | "error" | "cancelled"
+    pub phase: String, // "queued" | "downloading" | "merging" | "completed" | "skipped" | "error" | "cancelled"
     pub downloaded_bytes: Option<f64>,
     pub total_bytes: Option<f64>,
     pub speed_bps: Option<f64>,
@@ -334,6 +336,14 @@ fn spawn_progress_reader(
         // download never got as far as producing a file.
         let mut final_path: Option<String> = None;
         let mut extractor: Option<String> = None;
+        // yt-dlp skipped the fetch because the target file was already on
+        // disk (see `is_already_downloaded_line`).
+        let mut already_downloaded = false;
+        // Whether any real transfer happened. Needed because both can be
+        // true in one job: a playlist where some entries were already on
+        // disk and others were fetched is a completed download, not a
+        // skipped one.
+        let mut saw_transfer = false;
         let tail_text = |tail: &std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>| {
             let buf = tail.lock().unwrap();
             let text = buf.iter().cloned().collect::<Vec<_>>().join("\n");
@@ -351,6 +361,10 @@ fn spawn_progress_reader(
                 extractor = Some(rest.trim().to_string());
                 continue;
             }
+            if is_already_downloaded_line(&line) {
+                already_downloaded = true;
+                continue;
+            }
 
             if let Some(fields) = parse_progress_line(&line) {
                 if fields.status == "error" {
@@ -365,7 +379,16 @@ fn spawn_progress_reader(
                     _ if fields.status == "finished" => 100.0,
                     _ => 0.0,
                 };
+                if fields.status == "downloading" {
+                    saw_transfer = true;
+                }
                 let overall_percent = tracker.observe(raw_percent, &fields.status);
+                // A skipped file still produces one `finished` progress line.
+                // Emitting it would flash "Merging…" on a job that never
+                // transferred a byte, immediately before its "Skipped" label.
+                if already_downloaded && !saw_transfer {
+                    continue;
+                }
                 let phase = if fields.status == "finished" { "merging" } else { "downloading" };
                 let _ = app.emit(
                     "job://progress",
@@ -402,7 +425,17 @@ fn spawn_progress_reader(
         if let Some(mut child) = registry.remove(&job_id) {
             let status = child.wait();
             let succeeded = matches!(&status, Ok(s) if s.success());
-            let event = if succeeded {
+            // Nothing was fetched because the file was already there — a
+            // distinct outcome from both "completed" (we downloaded it) and
+            // "error", and the one the user needs in order to know why a job
+            // finished instantly.
+            let skipped = succeeded && already_downloaded && !saw_transfer;
+            let event = if skipped {
+                JobProgressEvent {
+                    overall_percent: Some(100.0),
+                    ..JobProgressEvent::terminal(&job_id, "skipped")
+                }
+            } else if succeeded {
                 JobProgressEvent::terminal(&job_id, "completed")
             } else {
                 JobProgressEvent::error(
@@ -414,7 +447,15 @@ fn spawn_progress_reader(
             record_history(
                 &app,
                 &history_ctx,
-                if succeeded { "completed" } else { "error" },
+                // Recorded as its own status rather than folded into
+                // "completed": the visible history lists completed rows
+                // only, so a skip doesn't add a second row for a file that
+                // is already listed from the run that actually fetched it.
+                match (skipped, succeeded) {
+                    (true, _) => "skipped",
+                    (_, true) => "completed",
+                    _ => "error",
+                },
                 final_path,
                 extractor,
             );

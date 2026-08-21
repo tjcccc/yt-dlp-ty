@@ -36,8 +36,15 @@ export function Sidebar({
     >
       {/* "ty" is "yt" backwards and stands for thank you — yt-dlp does the
           real work, this is a window onto it. Spelled out here rather than
-          left as an initialism nobody can decode. */}
-      <h1 className="text-[19px] font-semibold px-2 leading-tight">yt-dlp, Thank you!</h1>
+          left as an initialism nobody can decode.
+
+          Type and vertical offset deliberately match a page heading
+          (`text-[20px]`, default 1.5 leading, 4px below the 36px title-bar
+          band — cf. MainPage's `pt-1`), so this title and the template name
+          opposite it sit on one baseline across the sidebar divider. Both
+          columns start at the same y, but a smaller size or a tighter
+          leading here still lands the baseline higher. */}
+      <h1 className="text-[20px] font-semibold px-2 mt-1">yt-dlp, thank you!</h1>
 
       <div className="flex items-center justify-between pl-2 pr-1 mt-2">
         <span className="text-[12px] text-[var(--text-tertiary)] uppercase tracking-wide">

@@ -15,6 +15,7 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
   const selectedTemplateId = useStore((s) => s.selectedTemplateId);
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
   const addJob = useStore((s) => s.addJob);
+  const clearFinishedJobs = useStore((s) => s.clearFinishedJobs);
   const updateTemplate = useStore((s) => s.updateTemplate);
 
   const [urlsText, setUrlsText] = useState("");
@@ -115,6 +116,12 @@ export function MainPage({ onStarted }: { onStarted: () => void }) {
     // are dropped rather than silently downloaded at a default format.
     const targetUrls = mode === "chooseFormat" ? urls.filter((u) => chosenFormats[u]) : urls;
     if (targetUrls.length === 0) return;
+    // Results of previous batches are cleared here, so the Downloading page
+    // shows this run only. Without it, a finished or failed job stayed on the
+    // page indefinitely and read as part of the batch just started. Jobs
+    // still in flight are kept — starting a second batch must not hide the
+    // first one's running downloads.
+    clearFinishedJobs();
     setError(null);
     setSubmitting(true);
     try {

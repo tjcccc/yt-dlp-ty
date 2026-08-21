@@ -73,7 +73,16 @@ export function isVideoOnly(format: FormatEntry): boolean {
   return format.vcodec !== "none" && format.acodec === "none";
 }
 
-export type JobPhase = "queued" | "downloading" | "merging" | "completed" | "error" | "cancelled";
+/// "skipped" is reported when yt-dlp found the target file already on disk
+/// and fetched nothing — a success, but a different one from "completed".
+export type JobPhase =
+  | "queued"
+  | "downloading"
+  | "merging"
+  | "completed"
+  | "skipped"
+  | "error"
+  | "cancelled";
 
 export interface JobProgressEvent {
   jobId: string;

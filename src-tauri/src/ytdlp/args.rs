@@ -190,6 +190,15 @@ pub fn build_download_args(req: &DownloadRequest) -> Vec<String> {
     args.push(format!("after_move:{PRINT_PATH_PREFIX}%(filepath)s"));
     args.push("--print".to_string());
     args.push(format!("after_move:{PRINT_EXTRACTOR_PREFIX}%(extractor_key)s"));
+    // Mandatory alongside `--print`, which *implies `--quiet`* — and quiet
+    // suppresses far more than yt-dlp's banner. Verified against yt-dlp
+    // 2026.07.04: with the two `--print` flags above and no `--no-quiet`,
+    // stdout carries the printed lines and nothing else — no
+    // `--progress-template` lines (so the progress bar only ever moved on
+    // the terminal event), no `[Merger]`/`[ffmpeg]` lines (so `is_merge_line`
+    // never fired), and no `[download] ... has already been downloaded` line
+    // (so a skipped file was indistinguishable from a fresh download).
+    args.push("--no-quiet".to_string());
     if let Some(ffmpeg_path) = &req.ffmpeg_path {
         args.push("--ffmpeg-location".to_string());
         args.push(ffmpeg_path.clone());
@@ -207,7 +216,30 @@ pub fn build_download_args(req: &DownloadRequest) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_chosen_format, apply_mode, build_probe_args, ChosenFormat};
+    use super::{
+        apply_chosen_format, apply_mode, build_download_args, build_probe_args, ChosenFormat,
+        DownloadRequest,
+    };
+
+    #[test]
+    fn download_args_undo_the_quiet_that_print_implies() {
+        // Regression: `--print` implies `--quiet`, which suppressed *all* of
+        // yt-dlp's stdout chatter — the `--progress-template` lines the
+        // progress bar reads, the `[Merger]` line merge detection reads, and
+        // the `[download] ... has already been downloaded` line the
+        // skip-existing-file status reads. Every one of those features is
+        // dead without `--no-quiet`.
+        let args = build_download_args(&DownloadRequest {
+            url: "URL".into(),
+            download_to: "/tmp/%(title)s.%(ext)s".into(),
+            parameters: vec![],
+            ffmpeg_path: None,
+            proxy: None,
+        });
+        assert!(args.iter().any(|a| a == "--print"));
+        assert!(args.iter().any(|a| a == "--no-quiet"));
+        assert!(!args.iter().any(|a| a == "--quiet" || a == "-q"));
+    }
 
     fn applied(parameters: &str, mode: &str) -> Vec<String> {
         apply_mode(parameters, mode).expect("expected parameters to parse")

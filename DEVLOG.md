@@ -836,3 +836,75 @@ means spawning them the way `commands/jobs.rs` already spawns downloads:
 Verified for this change: `cargo test` (22 passed), `cargo check`, `pnpm build`.
 The epoch path is not covered by a test — it needs a real multi-chunk batch and
 a cancel mid-flight, which is an integration test this repo has no harness for.
+
+## 2026-08-21 — v0.2.3: queue no longer accumulates old results; existing files are skipped visibly
+
+Two user-reported issues, plus one latent bug found while fixing the second.
+
+**Finished jobs stayed on the Downloading page.** Nothing ever removed a job
+from the store, so a failed (or completed) row from an earlier run sat above
+the batch just started and read as part of it. `clearFinishedJobs` in
+`state/jobsSlice.ts` drops every job in a terminal phase and is called from
+`MainPage.startJobs` right before the backend call. Jobs still in flight are
+deliberately kept: starting a second batch must not hide the first one's
+running downloads. `pendingEvents` is left alone — an event is only ever
+buffered for a job the store hasn't registered yet, so none of them belong to
+a job being cleared.
+
+**"Skipped — file exists" as its own status.** yt-dlp already refuses to
+overwrite an existing final file (default `--no-force-overwrites`); it prints
+`[download] <path> has already been downloaded`, fetches nothing, and exits 0
+— which the app used to report as plain "Completed". The reader now watches
+for that line (`progress::is_already_downloaded_line`) and reports phase
+`skipped` when the job succeeded *and* nothing was transferred. Both halves
+matter: a playlist where some entries were on disk and others were fetched is
+a completed download, not a skipped one, which is what `saw_transfer` tracks.
+The skip case also emits one synthetic `finished` progress line, suppressed so
+a job that transferred no bytes doesn't flash "Merging…" before its label.
+History records `skipped` as its own status; the visible list still filters to
+`completed`, so a skip doesn't add a second row for a file already listed from
+the run that fetched it.
+
+*Name-based, not name+size, and deliberately so.* The requested size check has
+nothing trustworthy to compare against: an interrupted download is still a
+`.part` and never matches the final name in the first place, and the only size
+available before fetching is one stream's `total_bytes` estimate — for the
+merge case (two streams into one container) it describes neither the file on
+disk nor the file that would be written, so size-gating would false-negative
+on exactly the jobs it was meant to protect. A skip is only ever "this exact
+output path already exists, complete".
+
+**`--print` was silently killing all of stdout.** Found while looking for the
+skip line: `--print` *implies `--quiet`*, and quiet suppresses far more than
+the banner. With yt-dlp 2026.07.04 and the two `--print after_move:` flags this
+app has been passing, stdout carried those two lines and nothing else — no
+`--progress-template` lines, so the progress bar only ever moved on the
+terminal event (0 → 100), and no `[Merger]` lines, so `is_merge_line` /
+`PassTracker::observe_merge` had never once fired in the running app.
+`build_download_args` now passes `--no-quiet`, which restores all three. A
+regression test pins it, since the flag looks removable and takes three
+features with it.
+
+Verified: `cargo test` (26 passed), `tsc --noEmit`, and live yt-dlp runs with
+the machine's real `~/.config/yt-dlp/config` active (cookies, proxy,
+`--write-info-json`, `--merge-output-format mp4/mkv`) rather than
+`--ignore-config`:
+
+- Two-pass merge job (`-f bestvideo+bestaudio/best`, YouTube): 8 `downloading`
+  + `finished` per pass, then one `[Merger]` line — the exact shape
+  `PassTracker` bands assume, so the restored progress path is monotonic on
+  real input.
+- Re-running that same job: `has already been downloaded` on stdout for the
+  merged `.mkv`, no `dl:` lines at all, file mtime unchanged, exit 0.
+- Single-format job (generic extractor): same skip line, plus the one
+  `dl:…|finished|NA|…` line the suppression guard exists for.
+
+**Sidebar title aligned with the page heading.** `yt-dlp, thank you!` (now
+lower-case, in `Sidebar.tsx` and as the window title in `tauri.conf.json`) sat
+about 7px above the template name opposite it, because it was 19px with
+`leading-tight` while page headings are 20px at the default 1.5 leading. Both
+columns already start at the same y — the sidebar's `pt-9` equals the content
+column's 36px drag band — so matching the type and adding MainPage's own 4px
+`pt-1` offset puts the two titles on one baseline. 20px/semibold is also what
+`spec/ui.md` specifies for the site name, which the 19px value had been quietly
+undercutting.
